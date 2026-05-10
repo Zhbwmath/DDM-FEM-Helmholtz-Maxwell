@@ -1,27 +1,35 @@
-function M = assembleMass2D(node, elem)
-% ASSEMBLEMASS2D  Assemble the P1 mass matrix on a 2D triangular mesh.
+function M = assembleMass2D(node, elem, degree)
+% ASSEMBLEMASS2D  Assemble the Pk mass matrix on a 2D triangular mesh.
 %
 %   M_ij = \int_\Omega \phi_i \phi_j  dx
 %
-%   M = ASSEMBLEMASS2D(node, elem)
+%   M = ASSEMBLEMASS2D(node, elem)        % default: P1
+%   M = ASSEMBLEMASS2D(node, elem, degree) % P1, P2, or P3
 %
-%   Uses the closed-form local mass matrix for P1 triangles:
-%     M_loc = |T|/12 * [2 1 1; 1 2 1; 1 1 2]
-%   No quadrature loop needed.
+%   P1 uses the closed-form  |T|/12 * [2 1 1; 1 2 1; 1 1 2].
+%   P2/P3 use Gaussian quadrature.
 
+if nargin < 3, degree = 1; end
+
+if degree == 1
+    M = assembleMass2D_P1(node, elem);
+else
+    M = assembleMass2D_quad(node, elem, degree);
+end
+end
+
+
+function M = assembleMass2D_P1(node, elem)
 N = size(node, 1);
 
 x1 = node(elem(:,1), 1);   y1 = node(elem(:,1), 2);
 x2 = node(elem(:,2), 1);   y2 = node(elem(:,2), 2);
 x3 = node(elem(:,3), 1);   y3 = node(elem(:,3), 2);
-
 area = 0.5 * abs((x2 - x1) .* (y3 - y1) - (x3 - x1) .* (y2 - y1));
 
-% Local mass:  diag = 2*|T|/12 = |T|/6,   off-diag = |T|/12
 diag_val = area / 6;
 off_val  = area / 12;
 
-% ---- Sparse assembly: 9 entries per 3x3 symmetric matrix ------------------
 ii = [elem(:,1);  elem(:,2);  elem(:,3)];
 jj = [elem(:,1);  elem(:,2);  elem(:,3)];
 ss = [diag_val;   diag_val;   diag_val];
@@ -31,4 +39,57 @@ jj = [jj;  elem(:,2);  elem(:,1);  elem(:,3);  elem(:,1);  elem(:,3);  elem(:,2)
 ss = [ss;  off_val;    off_val;    off_val;    off_val;    off_val;    off_val];
 
 M = sparse(ii, jj, ss, N, N);
+end
+
+
+function M = assembleMass2D_quad(node, elem, degree)
+if size(elem, 2) == 3
+    [node, elem] = extendMesh2D(node, elem, degree);
+end
+
+N = size(node, 1);
+NT = size(elem, 1);
+nLB = size(elem, 2);
+
+quadOrder = 2 * degree;                  % exact for integrand degree 2p
+[lambda, weight] = quadtriangle(quadOrder);
+nQuad = length(weight);
+
+[phi, ~] = lagrange2D(degree, lambda);   % phi: nQuad x nLB
+
+% Element areas
+x1 = node(elem(:,1), 1);   y1 = node(elem(:,1), 2);
+x2 = node(elem(:,2), 1);   y2 = node(elem(:,2), 2);
+x3 = node(elem(:,3), 1);   y3 = node(elem(:,3), 2);
+area = 0.5 * abs((x2 - x1) .* (y3 - y1) - (x3 - x1) .* (y2 - y1));
+
+% ---- Sparse assembly ------------------------------------------------------
+nEntries = NT * nLB * (nLB + 1) / 2 * 2;
+ii = zeros(nEntries, 1);
+jj = zeros(nEntries, 1);
+ss = zeros(nEntries, 1);
+idx = 0;
+
+for q = 1:nQuad
+    phi_q = phi(q, :)';                   % nLB x 1
+    for a = 1:nLB
+        for b = a:nLB
+            s = weight(q) * area * (phi_q(a) * phi_q(b));
+            nxt = idx + 1;
+            idx = idx + NT;
+            ii(nxt:idx) = elem(:,a);
+            jj(nxt:idx) = elem(:,b);
+            ss(nxt:idx) = s;
+            if a ~= b
+                nxt2 = idx + 1;
+                idx = idx + NT;
+                ii(nxt2:idx) = elem(:,b);
+                jj(nxt2:idx) = elem(:,a);
+                ss(nxt2:idx) = s;
+            end
+        end
+    end
+end
+
+M = sparse(ii(1:idx), jj(1:idx), ss(1:idx), N, N);
 end
