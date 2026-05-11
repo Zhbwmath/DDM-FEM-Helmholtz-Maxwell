@@ -63,7 +63,7 @@ if [ -n "$MATLAB_CMD" ]; then
 
   # Run verification: first addpath, then execute any *_test.m or *_verify.m files
   # Otherwise run a basic correctness check on the main solver
-  TEST_FILES=$(find "$PROJECT_DIR" -maxdepth 1 -name "*_test.m" -o -name "*_verify.m" 2>/dev/null)
+  TEST_FILES=$(find "$PROJECT_DIR/verify" -maxdepth 1 -name "verify_*.m" 2>/dev/null)
 
   if [ -n "$TEST_FILES" ]; then
     for tf in $TEST_FILES; do
