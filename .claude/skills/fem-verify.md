@@ -83,3 +83,49 @@ Keep these in a shared `tests/` or `verify/` directory:
 - **Two-subdomain test:** Known interface solution, verify Schur complement
 - **Multi-domain patch test:** Constant solution across subdomains
 - **Iteration count:** Number of Schwarz iterations should be bounded independent of mesh size
+
+## Helmholtz ORAS Verification Rules
+
+For ORAS Helmholtz experiments, use linear nodal partition-of-unity weights by default. In this codebase, attach them with:
+
+```matlab
+parts = partitionMesh2D(node, elem, bd, nSub, 'overlap', delta);
+parts = linearPartitionOfUnity2D(parts, bbox, gridSize, delta);
+```
+
+Use equal `1/nodeCount` weights only for an explicit comparison or when the user asks for plain RAS weighting. The Gander-Gong-Graham-Spence variational ORAS operator relies on weighted prolongation by a nodal partition of unity.
+
+The POU must be genuinely piecewise linear across the full overlap. For neighbouring strips with overlap extension `delta` on each side, the two weights on `[x_interface-delta, x_interface+delta]` should be linear and sum to one. Do not use plateau weights that are later normalized; that produces a non-linear rational transition and does not match the GGS setup.
+
+For Helmholtz iteration tables, explicitly enforce the resolution condition. When reproducing GGS Tables 5-8, sweep
+
+```matlab
+h = 2*pi/(q*k),  q in [10, 20, 40, 80]
+```
+
+or document clearly when a smaller compact run skips large `q` because MATLAB dense `E` or high-order sparse solves become too expensive. Do not replace this sweep by a single "about 10 points per wavelength" mesh unless the user requests a quick smoke test.
+
+For power-norm studies, record both `||E||` and `||E^N||` in the `k`-weighted H1 norm induced by `K + k^2*M`, and report the partition shape, overlap convention, polynomial degree, `k`, and `h`.
+
+For strip GGS iteration experiments, interpret overlap width as the total overlap between adjacent original subdomains. Thus "overlap width 1/2" means extension `1/4` on each side of each non-overlapped strip.
+
+For GGS reproduction experiments, make the artificial subdomain boundaries and extended boundaries mesh-resolved. The paper assumes each `partial Omega_j` is resolved by the finite-element mesh. For the 8-strip domain `(0,16/3) x (0,1)` with `H=2/3` and extension `1/4`, use a mesh size of the form `h = 1/(12*m)` near the target `2*pi/(q*k)`, so both `H/h` and `(1/4)/h` are integers. For checkerboards with `gridN` subdomains per side and overlap `H/4`, use `h = 1/(4*gridN*m)` near the target.
+
+Be explicit about the strip overlap convention. The user convention "overlap width 1/2" means extension `1/4` on each side; in diagnostics on this codebase, extension `1/2` on each side gives iteration counts much closer to Table 5. Use `ORAS_LARGEK_STRIP_OVERLAP_EXTENSION` to test both and report which convention is used.
+
+For large wave-number Helmholtz runs, especially `k > 100`, estimate memory before running. Include global DOFs, polynomial degree, partition shape, approximate sparse matrix storage, local LU storage, and GMRES Krylov storage. Do not form dense `E` at large `k`; restrict large cases to Richardson/GMRES iteration tables unless the dense `E` memory estimate is clearly safe.
+
+For large-k ORAS iteration batches, use `verify/verify_oras_largek_iterations.m`. It checkpoints after every completed case and supports environment switches:
+
+```matlab
+setenv('ORAS_LARGEK_KVALS','40 80 120');
+setenv('ORAS_LARGEK_DEGREES','1 2 3');
+setenv('ORAS_LARGEK_QVALS','10');
+setenv('ORAS_LARGEK_PARPOOL','off');     % off, auto, or on
+setenv('ORAS_LARGEK_WORKERS','4');       % optional
+setenv('ORAS_LARGEK_TAG','run1');        % avoids checkpoint overwrites
+```
+
+Parallel MATLAB batches are allowed for these long experiments when CPU is available. Use distinct `ORAS_LARGEK_TAG` values so concurrent runs write separate `.mat` and `.md` checkpoint files. Keep a watchdog or command timeout for every long batch; for the current large-k studies, use a 6-hour wall-time limit unless the user gives a different limit.
+
+When partial checkpoint results already make the numerical conclusion clear, stop and report the partial table to the user instead of waiting for the full sweep. This is especially important if the results closely match the target Gander-Gong-Graham-Spence tables, or if they show a systematic distinction that needs user advice before spending more CPU time.

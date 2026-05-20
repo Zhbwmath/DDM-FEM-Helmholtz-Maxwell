@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"/d/Programs/Working Directory/MATLAB/\" && bash .claude/hooks/stop-verify.sh"
+            "command": "cd \"/e/bwzheng/DDM_Maxwell/DDM-FEM-Helmholtz-Maxwell\" && bash .claude/hooks/stop-verify.sh"
           }
         ]
       }

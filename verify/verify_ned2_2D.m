@@ -48,7 +48,7 @@ for k = 1:nRefine
     end
     eL2p=eL2; eHcp=eHc; hp=hk;
 end
-fprintf('\nExpected: NE_2 L2~O(h^2), H(curl)~O(h^2)\n');
+fprintf('\nExpected for this NE_2 variant: L2~O(h), H(curl)~O(h)\n');
 fprintf('========== Done ==========\n');
 
 

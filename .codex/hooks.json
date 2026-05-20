@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/e/bwzheng/DDM_Maxwell/DDM-FEM-Helmholtz-Maxwell\" && bash 'e:\\bwzheng\\DDM_Maxwell\\DDM-FEM-Helmholtz-Maxwell\\.codex\\hooks\\stop-verify.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}
