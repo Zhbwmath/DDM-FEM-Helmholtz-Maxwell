@@ -44,12 +44,23 @@ fprintf('Test 4: nested NE_1 prolongation identity ... ');
 assert(norm(Pident - speye(size(Pident)), 'fro') < 1e-12, ...
     'NE1 prolongation is not identity on identical meshes.');
 [coarseNode, coarseElem, coarseBd] = cubemesh([0, 1, 0, 1, 0, 1], 1/2);
-[P, ~] = prolongateNestedNed1(coarseNode, coarseElem, node, elem);
+[fineNodeP, fineElemP, fineBdP] = cubemesh([0, 1, 0, 1, 0, 1], 1/4);
+[P, ~] = prolongateNestedNed1(coarseNode, coarseElem, fineNodeP, fineElemP);
 [coarseFree, ~] = nedelecFreeEdges3D(coarseElem, coarseBd);
-P_ff = P(freeEdges, coarseFree);
-assert(size(P_ff, 1) == numel(freeEdges) && size(P_ff, 2) == numel(coarseFree), ...
+[fineFreeP, ~] = nedelecFreeEdges3D(fineElemP, fineBdP);
+P_ff = P(fineFreeP, coarseFree);
+assert(size(P_ff, 1) == numel(fineFreeP) && size(P_ff, 2) == numel(coarseFree), ...
     'Reduced prolongation has wrong size.');
-fprintf('PASSED\n');
+[Gc, ~] = nedelecGradientMatrix(coarseNode, coarseElem);
+[Gf, ~] = nedelecGradientMatrix(fineNodeP, fineElemP);
+Pp1 = prolongateNestedP1(coarseNode, coarseElem, fineNodeP);
+commRel = norm(P * Gc - Gf * Pp1, 'fro') / max(norm(Gf * Pp1, 'fro'), eps);
+assert(commRel < 1e-13, 'NE1 prolongation does not commute with gradients.');
+Ac = assembleMaxwell3D(coarseNode, coarseElem, 1, 1);
+Af = assembleMaxwell3D(fineNodeP, fineElemP, 1, 1);
+galRel = norm(P' * Af * P - Ac, 'fro') / max(norm(Ac, 'fro'), eps);
+assert(galRel < 1e-13, 'NE1 prolongation fails the Galerkin identity.');
+fprintf('PASSED  (comm %.1e, Galerkin %.1e)\n', commRel, galRel);
 
 fprintf('Test 5: one-level and two-level ASM PCG smoke ... ');
 [nodeS, elemS, bdS] = cubemesh([0, 1, 0, 1, 0, 1], 1/4);
