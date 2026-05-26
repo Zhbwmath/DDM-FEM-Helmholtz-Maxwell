@@ -15,6 +15,7 @@ tests = {
     'Non-divergence assembly','verify/verify_nondivergence_assembly', 'fast'
     'PML Helmholtz 2D',  'verify/verify_pml_helmholtz2d', 'fast'
     'Nedelec Helmholtz decomposition','verify/verify_nedelec_helmholtz_decomp', 'fast'
+    'Toselli Maxwell Schwarz','verify/verify_toselli_maxwell_schwarz', 'fast'
     'P1-P3 Lagrange 2D', 'verify/verify_ho_2D',       'medium'
     'NE_1 Nedelec 2D',   'verify/verify_ned1_2D',     'medium'
     'NE_2 Nedelec 2D',   'verify/verify_ned2_2D',     'medium'
