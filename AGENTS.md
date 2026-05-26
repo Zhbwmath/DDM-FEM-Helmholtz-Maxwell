@@ -205,43 +205,20 @@ After completing a phase, organize new files into their appropriate folders. Cre
 M^{-1} = Σ_i R_i^T A_i^{-1} R_i
 
 - R_i: V_h → V_{h,i} — restricts global free DOFs to interior free DOFs of Ω_i
-- A_i = R_i A R_i^T — extracted from global stiffness (no re-assembly needed)
+- A_i = R_i A R_i^T — extracted from global stiffness
 - V_{h,i} = {v ∈ V_h|_{Ω_i} : v = 0 on ∂Ω_i} — Dirichlet on artificial boundaries
-- κ(M^{-1}A) ~ O(1 + H/δ), independent of h
 - **Overlap is ESSENTIAL**: without overlap (δ=0), Dirichlet inner BC makes subdomains disconnected → κ→∞
 
 ### OSM (Optimized Schwarz) — Non-overlapping, Robin transmission
 
 - ∂u_i/∂n_i + α u_i = ∂u_j/∂n_i + α u_j on Γ_{ij}
-- Robin term: α·M_Γ added to stiffness, M_Γ·g added to RHS
-- Flux from neighbor: g(k) = b_j(k) - (A_j u_j)(k) + α u_j(k)
-- Optimal α ≈ 0.5·π/H (empirically)
+- Flux from neighbor
 - ρ independent of h, degrades as H→0: ρ→1 without coarse space
 
 ## DDM Verification Commands
-
-### Full parameter study (1D + 2D + 3D)
-
-```bash
-matlab -nosplash -nodesktop -batch "addpath(genpath('.')); run('verify/verify_ddm_study.m');"
-```
-
-Single script covering all dimensions: ASM κ vs h/H/δ, OSM ρ vs α/H, ASM vs OSM comparison.
-
-### Generate partition diagrams
-
-```bash
-matlab -nosplash -nodesktop -batch "addpath(genpath('.')); run('verify/verify_ddm_partition_viz.m');"
-```
-
-Generates in `verify/`:
-- `fig_asm_overlap.png` — 2D ASM: elements colored by Ω_i, overlap region, interior★ vs boundary○ nodes
-- `fig_osm_nonoverlap.png` — 2D OSM: non-overlapping subdomains, interface edges in red
 
 Stable DDM result summaries and ORAS/Helmholtz reproduction notes live in:
 - `docs/TW05_asm_poisson/`
 - `docs/Gan06_osm_poisson/`
 - `docs/GGGS21_oras_helmholtz/`
-- `docs/GGGLS24_pml/`
-- `docs/GGGLS24_ras_pml/`
-- `docs/interest_theory_checks/`
+- `docs/GGGLS24_ras_rms_pml/`
