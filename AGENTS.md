@@ -185,8 +185,9 @@ After completing a phase, organize new files into their appropriate folders. Cre
 
 ## DDM: Overlap Parameter Rule
 
-- **δ must be an integer multiple of h** (δ = k·h, k ∈ ℕ) unless explicitly specified otherwise.
-- This ensures subdomain boundaries align with mesh edges, producing straight (non-zig-zag) interfaces on structured meshes.
+- **DDM mesh-alignment principle:** `delta`, each overlapping subdomain size `H_l` for `Omega_l`, and any two-level coarse mesh size `H` must be integer multiples of the fine mesh size `h` unless the user explicitly specifies an exception.
+- In particular, use `delta = k_delta h`, `H_l = k_l h`, and, when a coarse space is used, `H = k_H h` with integer `k_delta`, `k_l`, and `k_H`.
+- This ensures overlap boundaries, subdomain boundaries, and coarse-space mesh boundaries align with the fine mesh, producing straight (non-zig-zag) interfaces on structured meshes.
 - Applies to both strip and checkerboard partitions in all dimensions.
 
 ## DDM: Mathematical Formulation
