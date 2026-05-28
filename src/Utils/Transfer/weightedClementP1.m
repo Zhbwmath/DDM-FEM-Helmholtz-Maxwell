@@ -29,6 +29,17 @@ else
     error('weightedClementP1:dim', 'Only 2D and 3D meshes are supported.');
 end
 nQuad = length(wRef);
+fineCentroid = zeros(NTf, dim);
+for a = 1:nv
+    fineCentroid = fineCentroid + fineNode(fineElem(:, a), :);
+end
+fineCentroid = fineCentroid / nv;
+[fineOwner, ~] = locateSimplexP1(coarseNode, coarseElem, fineCentroid, 1e-10);
+if any(fineOwner == 0)
+    bad = find(fineOwner == 0, 1);
+    error('weightedClementP1:notNested', ...
+        'Fine element centroid %d was not found in the coarse mesh.', bad);
+end
 
 maxNnz = NTf * nQuad * nv * nv;
 ii = zeros(maxNnz, 1);
@@ -36,33 +47,41 @@ jj = zeros(maxNnz, 1);
 ss = zeros(maxNnz, 1);
 denom = zeros(Nc, 1);
 idx = 0;
+fineCols = reshape(fineElem.', [], 1);
+jacScale = simplexJacobianScaleRows(fineNode, fineElem);
 
-for t = 1:NTf
-    fv = fineElem(t, :);
-    vFine = fineNode(fv, :);
-    jacScale = simplexJacobianScale(vFine);
-    xq = lambdaF * vFine;
-    [ct, lambdaC] = locateSimplexP1(coarseNode, coarseElem, xq, 1e-10);
-    if any(ct == 0)
-        error('weightedClementP1:notNested', ...
-            'A fine quadrature point was not found in the coarse mesh.');
+for q = 1:nQuad
+    xq = zeros(NTf, dim);
+    for b = 1:nv
+        xq = xq + lambdaF(q, b) * fineNode(fineElem(:, b), :);
     end
 
-    for q = 1:nQuad
-        wq = jacScale * wRef(q) * evalWeight(weightFun, xq(q, :));
-        cv = coarseElem(ct(q), :);
-        phiC = lambdaC(q, :);
-        phiF = lambdaF(q, :);
-        for a = 1:nv
-            row = cv(a);
-            denom(row) = denom(row) + wq * phiC(a);
-            cols = fv(:);
-            rows = idx + (1:nv);
-            ii(rows) = row;
-            jj(rows) = cols;
-            ss(rows) = wq * phiC(a) * phiF(:);
-            idx = idx + nv;
+    coarseAtQ = coarseElem(fineOwner, :);
+    lambdaC = barycentricRowsOwned(coarseNode, coarseAtQ, xq);
+    bad = any(lambdaC < -1e-10, 2) | any(lambdaC > 1 + 1e-10, 2);
+    if any(bad)
+        [ownerBad, lambdaBad] = locateSimplexP1(coarseNode, coarseElem, xq(bad, :), 1e-10);
+        if any(ownerBad == 0)
+            error('weightedClementP1:notNested', ...
+                'A fine quadrature point was not found in the coarse mesh.');
         end
+        coarseAtQ(bad, :) = coarseElem(ownerBad, :);
+        lambdaC(bad, :) = lambdaBad;
+    end
+
+    wq = jacScale * wRef(q) .* evalWeightRows(weightFun, xq);
+    for a = 1:nv
+        coarseRows = coarseAtQ(:, a);
+        scale = wq .* lambdaC(:, a);
+        denom = denom + accumarray(coarseRows, scale, [Nc, 1]);
+
+        values = scale * lambdaF(q, :);
+        nNew = NTf * nv;
+        rows = idx + (1:nNew);
+        ii(rows) = repelem(coarseRows, nv);
+        jj(rows) = fineCols;
+        ss(rows) = reshape(values.', [], 1);
+        idx = idx + nNew;
     end
 end
 
@@ -77,26 +96,84 @@ Q = spdiags(1 ./ denom, 0, Nc, Nc) * B;
 end
 
 
-function s = simplexJacobianScale(v)
-dim = size(v, 2);
+function s = simplexJacobianScaleRows(node, elem)
+dim = size(node, 2);
 if dim == 2
-    area = abs(det([v(2,:) - v(1,:); v(3,:) - v(1,:)])) / 2;
+    v1 = node(elem(:, 1), :);
+    v2 = node(elem(:, 2), :);
+    v3 = node(elem(:, 3), :);
+    a = v2 - v1;
+    b = v3 - v1;
+    area = abs(a(:,1) .* b(:,2) - a(:,2) .* b(:,1)) / 2;
     s = 2 * area;
 else
-    vol = abs(det([v(2,:) - v(1,:); v(3,:) - v(1,:); v(4,:) - v(1,:)])) / 6;
+    v1 = node(elem(:, 1), :);
+    v2 = node(elem(:, 2), :);
+    v3 = node(elem(:, 3), :);
+    v4 = node(elem(:, 4), :);
+    a = v2 - v1;
+    b = v3 - v1;
+    c = v4 - v1;
+    vol = abs(dot(a, cross(b, c, 2), 2)) / 6;
     s = 6 * vol;
 end
 end
 
 
-function w = evalWeight(weightFun, x)
-if isempty(weightFun)
-    w = 1;
+function lambda = barycentricRowsOwned(node, elemRows, x)
+dim = size(node, 2);
+if dim == 2
+    v1 = node(elemRows(:, 1), :);
+    v2 = node(elemRows(:, 2), :);
+    v3 = node(elemRows(:, 3), :);
+    a = v2 - v1;
+    b = v3 - v1;
+    r = x - v1;
+    detT = a(:,1) .* b(:,2) - a(:,2) .* b(:,1);
+    lambda2 = (r(:,1) .* b(:,2) - r(:,2) .* b(:,1)) ./ detT;
+    lambda3 = (a(:,1) .* r(:,2) - a(:,2) .* r(:,1)) ./ detT;
+    lambda = [1 - lambda2 - lambda3, lambda2, lambda3];
+elseif dim == 3
+    v1 = node(elemRows(:, 1), :);
+    v2 = node(elemRows(:, 2), :);
+    v3 = node(elemRows(:, 3), :);
+    v4 = node(elemRows(:, 4), :);
+    a = v2 - v1;
+    b = v3 - v1;
+    c = v4 - v1;
+    r = x - v1;
+    detT = dot(a, cross(b, c, 2), 2);
+    lambda2 = dot(r, cross(b, c, 2), 2) ./ detT;
+    lambda3 = dot(a, cross(r, c, 2), 2) ./ detT;
+    lambda4 = dot(a, cross(b, r, 2), 2) ./ detT;
+    lambda = [1 - lambda2 - lambda3 - lambda4, lambda2, lambda3, lambda4];
 else
-    if numel(x) == 2
-        w = weightFun(x(1), x(2));
+    error('weightedClementP1:dim', 'Only 2D and 3D meshes are supported.');
+end
+end
+
+
+function w = evalWeightRows(weightFun, x)
+if isempty(weightFun)
+    w = ones(size(x, 1), 1);
+else
+    try
+        if size(x, 2) == 2
+            w = weightFun(x(:,1), x(:,2));
+        else
+            w = weightFun(x(:,1), x(:,2), x(:,3));
+        end
+    catch
+        if size(x, 2) == 2
+            w = arrayfun(@(i) weightFun(x(i,1), x(i,2)), (1:size(x,1)).');
+        else
+            w = arrayfun(@(i) weightFun(x(i,1), x(i,2), x(i,3)), (1:size(x,1)).');
+        end
+    end
+    if isscalar(w)
+        w = w * ones(size(x, 1), 1);
     else
-        w = weightFun(x(1), x(2), x(3));
+        w = w(:);
     end
 end
 end
