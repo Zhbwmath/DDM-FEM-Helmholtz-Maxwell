@@ -23,6 +23,12 @@ Updated: 2026-05-25
   - Per subdomain (N/nSub nodes): ~3 × 7×N/nSub nonzeros × 8 bytes (real) + LU ≈ 500×(N/nSub)^1.5 bytes
   - Total ≈ 112N + 48NT + nSub × (170N/nSub + 500(N/nSub)^1.5) bytes
 
+## Wave-Problem Resolution Rules
+
+- **Fine mesh for Helmholtz/Maxwell verification must resolve pre-asymptotic accuracy.** In addition to any coarse-mesh condition such as `H*k = O(1)`, the fine/reference Lagrange mesh for wave problems must satisfy at least `h = O(k^(-(2*p+1)/(2*p)))`, where `p` is the polynomial degree. For P1 this is `h = O(k^(-3/2))`. LOD experiments must choose the reference/fine mesh from this rule before judging pollution or localization behavior.
+- **Record the fine-scale rule in reproduction notes.** Any Helmholtz/Maxwell LOD or DDM reproduction report must state the selected `p`, `k_max`, resulting `h`, and whether the fine mesh is nested with every coarse mesh in the sweep.
+- **Modify experiment records in place.** When follow-up requirements change an existing experiment, update the previous reproduction `.md` file directly instead of creating a new report. If a table already records the affected data, modify the noncompliant columns or rows in that table rather than adding a replacement table. This keeps experiment documentation minimal and preserves continuity.
+
 ## MATLAB Figure Quality
 
 - **Always use LaTeX interpreter** for titles, labels, legends: `'Interpreter', 'latex'`
@@ -36,6 +42,11 @@ Updated: 2026-05-25
 - Every new or substantially updated Markdown document must include `Created: YYYY-MM-DD` and `Updated: YYYY-MM-DD` near the top. Keep `Created` fixed and refresh `Updated` when the document is changed.
 - Reproduction documents must also include `Verification entry point:` with the rerunnable script/function/command, and `Main utilities:` listing the principal assembly, solver, preconditioner, mesh, or verification functions used.
 - Active research notes under `tasks/<topic>/` follow the same metadata rule. When a task note is promoted to `docs/`, preserve the original creation date, refresh the update date, and keep the verification entry point current.
+
+## Paper Resources
+
+- Store user-provided papers for local reading under `resources/`.
+- Do not commit paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
 
 ## iFEM Coding Style (Chen Long)
 
