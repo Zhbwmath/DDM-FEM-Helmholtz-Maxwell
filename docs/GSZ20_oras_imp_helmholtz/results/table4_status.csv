@@ -1,0 +1,2 @@
+status,reason
+skipped,Strict local Dirichlet branch is ambiguous with the plane-wave eps_prob=0 boundary-only RHS; rerun only after RHS or local-boundary convention is clarified.

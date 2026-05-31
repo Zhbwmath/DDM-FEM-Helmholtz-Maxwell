@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-05-25
+Updated: 2026-05-29
 
 ## MATLAB Execution
 
@@ -16,12 +16,16 @@ Updated: 2026-05-25
 - **Ask permission before any test estimated to use >200 GB memory.** Estimate memory usage and present it before running.
 - **Use `parfor` for subdomain setup.** Start parpool before large runs: `parpool('local', feature('numcores'))`.
 - **Vectorize all assembly.** Use iFEM-style one-shot `sparse(ii, jj, ss, N, N)`.
-- **Avoid `containers.Map` with string keys for large meshes.** Use `ismember` on sorted edge lists or sparse hashing.
-- **Memory estimation rule of thumb** for 2D Helmholtz with N nodes, NT elements, nSub subdomains:
-  - Global sparse matrix A: ~7N nonzeros × 16 bytes (complex) ≈ 112N bytes
-  - Edge list: ~6NT entries × 8 bytes ≈ 48NT bytes
-  - Per subdomain (N/nSub nodes): ~3 × 7×N/nSub nonzeros × 8 bytes (real) + LU ≈ 500×(N/nSub)^1.5 bytes
-  - Total ≈ 112N + 48NT + nSub × (170N/nSub + 500(N/nSub)^1.5) bytes
+- **Memory estimation rule of thumb** for 2D Helmholtz with `N` nodes, `NT` elements, `nSub` subdomains, and GMRES restart/basis length `m`:
+  - Global sparse matrix `A`: about `7N` nonzeros x 16 bytes (complex) = `112N` bytes.
+  - Edge/topology work arrays: about `6NT` integer entries x 8 bytes = `48NT` bytes.
+  - Local sparse matrices: for local size `n_l`, store stiffness/mass/boundary matrices and assembly work as about `3 x 7n_l` complex nonzeros = `336n_l` bytes.
+  - Sparse LU factor storage: do **not** estimate as dense. For 2D sparse direct solves, use `16*c_lu*n_l*log2(max(n_l,2))` bytes with default fill constant `c_lu=20`; use `c_lu=30--40` for a conservative indefinite Helmholtz estimate or when ordering/fill behavior is unknown.
+  - GMRES Arnoldi basis: about `16N(m+3)` bytes for complex vectors, plus small Hessenberg/orthogonalization work arrays.
+  - One-level DDM sparse-LU total:
+    `112N + 48NT + nSub*(336n_l + 16*c_lu*n_l*log2(max(n_l,2))) + 16N(m+3)` bytes, where `n_l` should be the actual patch node count if known; otherwise use `N/nSub` only as a coarse first estimate.
+  - MATLAB direct/backslash fallback: when using direct solves without storing reusable local LU factors, use the sparse-LU estimate as a peak-memory guide but allow a looser safety margin because MATLAB may release temporaries between solves. Log observed peak memory when possible.
+  - Dense fallback estimate, only for a worst-case warning, is `16*n_l^2` bytes per local dense factor. Do not use the old `500*n_l^1.5` term as a memory estimate; it is closer to sparse-direct work scaling than storage and can greatly overestimate memory.
 
 ## Wave-Problem Resolution Rules
 
@@ -43,12 +47,8 @@ Updated: 2026-05-25
 - Reproduction documents must also include `Verification entry point:` with the rerunnable script/function/command, and `Main utilities:` listing the principal assembly, solver, preconditioner, mesh, or verification functions used.
 - Active research notes under `tasks/<topic>/` follow the same metadata rule. When a task note is promoted to `docs/`, preserve the original creation date, refresh the update date, and keep the verification entry point current.
 
-## Paper Resources
 
-- Store user-provided papers for local reading under `resources/`.
-- Do not commit paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
-
-## iFEM Coding Style (Chen Long)
+## iFEM Coding Style 
 
 This project follows the sparse matrixlization style from Long Chen's iFEM package:
 
@@ -165,6 +165,7 @@ Use this workflow whenever the user asks to **reproduce**, **replicate**, or **m
     Fix: set gSign(:, 7:8) = 1 after the edge-DOF loop.
     ```
 - **Do NOT commit** half-finished work or code that hasn't been verified.
+- **Do not commit**  paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
 
 ## File Organization
 
@@ -181,6 +182,7 @@ After completing a phase, organize new files into their appropriate folders. Cre
 | `src/Preconditioners/` | AS/OAS/ORAS preconditioner builders |
 | `tasks/` | Active research-task folders based on the current repo; keep task-local formulation notes, matrix translations, implementation plans, open questions, and intermediate Markdown records here until they become stable documentation |
 | `docs/` | Stable documentation, article reproduction reports, result summaries, and generated figures referenced by reports |
+| `resources` | Store user-provided papers for local reading |
 | `verify/` | Numerical verification and test scripts (`verify_*.m`) |
 | `debug/` | One-off debugging and investigation scripts (`debug_*.m`) |
 | `.claude/agents/` | Project sub-agent definitions such as `math-searcher` |
