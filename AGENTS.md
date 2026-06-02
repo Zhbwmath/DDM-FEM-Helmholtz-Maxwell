@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-05-29
+Updated: 2026-06-02
 
 ## MATLAB Execution
 
@@ -46,6 +46,7 @@ Updated: 2026-05-29
 - Every new or substantially updated Markdown document must include `Created: YYYY-MM-DD` and `Updated: YYYY-MM-DD` near the top. Keep `Created` fixed and refresh `Updated` when the document is changed.
 - Reproduction documents must also include `Verification entry point:` with the rerunnable script/function/command, and `Main utilities:` listing the principal assembly, solver, preconditioner, mesh, or verification functions used.
 - Active research notes under `tasks/<topic>/` follow the same metadata rule. When a task note is promoted to `docs/`, preserve the original creation date, refresh the update date, and keep the verification entry point current.
+- **Markdown math rendering:** use `$...$` for inline formulas and `$$...$$` for display formulas in Markdown files and chat derivations. Avoid `\(...\)` and `\[...\]` because they may not render consistently in this workspace.
 
 
 ## iFEM Coding Style 
