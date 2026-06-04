@@ -306,7 +306,7 @@ preOpts = struct('variant', c.variant, 'coarseType', c.coarseType, ...
     'adjointType', cfg.adjointType);
 pre = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, c.kappa, parts, nodeH, elemH, bdH, preOpts);
 
-b = assemblePlaneWaveBoundaryLoadP1(node, elem, bdFlag, c.kappa);
+b = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, c.kappa, 1);
 applyTime = 0;
     function y = applyTimed(r)
         if toc(timerAll) > cfg.timeLimitS

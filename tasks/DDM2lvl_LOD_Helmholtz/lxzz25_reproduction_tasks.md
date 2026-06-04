@@ -1,8 +1,8 @@
 Reproduction target: Lu--Xu--Zheng--Zou (2025), Section 5 Tables 5.1--5.9.
 Created: 2026-06-01
-Updated: 2026-06-01
-Verification entry point: `verify/verify_lxzz25_two_level_hybrid_smoke.m`; `verify/verify_lxzz25_article_experiments.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `buildLODHelmholtz2D`, `weightedClementP1`, `coarseHatPartition2D`, `assembleHelmholtz2D`, MATLAB `gmres`
+Updated: 2026-06-03
+Verification entry point: `verify/verify_lxzz25_two_level_hybrid_smoke.m`; `verify/verify_lxzz25_article_experiments.m`; `verify/verify_lxzz25_p2_framework.m`; `verify/verify_lxzz25_p2_experiments.m`
+Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `buildLODHelmholtz2D`, `weightedClementP1`, `coarseHatPartition2D`, `assembleHelmholtz2D`, `assemblePlaneWaveBoundaryLoad2D`, `prolongate_P1_P2`, MATLAB `gmres`
 
 # LXZZ25 Two-Level Hybrid Schwarz LOD Reproduction Tasks
 
@@ -11,6 +11,37 @@ This task file records the corrected implementation and verification state for r
 The corrected instruction file is authoritative:
 
 - `tasks/DDM2lvl_LOD_Helmholtz/codex_instruction_two_level_hybrid_schwarz_corrected_dollar_math.md`
+
+## P2 Fine-Space Non-Paper Extension
+
+The non-paper extension tests the LXZZ hybrid operator on a P2 fine finite element space while keeping the LOD construction in the existing P1 process. The fine mesh size $h$ is the underlying P1 mesh size before P2 extension. For $k \in \{16,32,64,128\}$, the default sweep uses $m=2$, $H=1/k$, and
+
+$$
+h^{-1}=\operatorname{align}(\lceil k^{3/2}\rceil,k).
+$$
+
+Let $E_{21}$ be the exact P1-to-P2 embedding matrix from `prolongate_P1_P2`. If the existing P1 LOD builder gives $B_1^{\rm trial}$ and $B_1^{\rm test}$, then the P2 coarse basis is
+
+$$
+B_2^{\rm trial}=E_{21}B_1^{\rm trial},\qquad
+B_2^{\rm test}=E_{21}B_1^{\rm test}.
+$$
+
+The P2 coarse matrix is recomputed with the P2 Helmholtz matrix:
+
+$$
+A_H=(B_2^{\rm test})^*A_2B_2^{\rm trial},\qquad
+A_2=K_2-k^2M_2-ikM_{\Gamma,2}.
+$$
+
+The P2 Dirichlet local solver uses P2 DOFs with positive P1 hat weight $w_\ell(x)>0$ as local free DOFs. This removes artificial-boundary DOFs, including artificial/physical-boundary intersections. The P2 impedance local solver uses all local P2 DOFs in the hat support and normalizes partition weights at P2 DOF coordinates.
+
+The P2 extension is verified by `verify/verify_lxzz25_p2_framework.m`. The experiment harness is `verify/verify_lxzz25_p2_experiments.m`, which writes:
+
+- `verify/lxzz25_hybrid_lod/lxzz25_p2_results.csv`
+- `verify/lxzz25_hybrid_lod/lxzz25_p2_results.md`
+
+The P2 harness keeps the workstation gates: rows above 300 GB are blocked, rows above 200 GB are marked as requiring permission unless `LXZZ25_P2_ALLOW_GT_200=1`, and default interactive runs are capped by `LXZZ25_P2_MAX_RUN_DOF`.
 
 The crucial correction is that the article's \(Q_m^{(1)}\) and \(Q_m^{(2)}\) are function-level preconditioned operators,
 \[

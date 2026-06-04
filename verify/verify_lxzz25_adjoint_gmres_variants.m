@@ -29,7 +29,7 @@ for ik = 1:numel(kValues)
         [node, elem, bdFlag] = squaremesh([0, 1, 0, 1], 1 / c.hInv);
         [nodeH, elemH, bdH] = squaremesh([0, 1, 0, 1], 1 / c.HInv);
         parts = coarseHatPartition2D(node, elem, bdFlag, c.Hsub / 2);
-        b = assemblePlaneWaveBoundaryLoadP1(node, elem, bdFlag, k);
+        b = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, k, 1);
 
         lodOpts = struct('oversampling', c.m, 'solveCoarse', false, ...
             'solverMode', 'direct', 'useParfor', false);

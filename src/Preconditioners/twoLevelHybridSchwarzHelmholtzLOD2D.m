@@ -4,24 +4,24 @@ function precon = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, par
 if nargin < 9 || isempty(opts), opts = struct(); end
 opts = localOptions(opts);
 
-K = assembleStiffness2D(node, elem, 1);
-M = assembleMass2D(node, elem, 1);
-Mb = assembleBoundaryMass2D(node, elem, bdFlag, 1);
-A = K - (k^2) * M - 1i * k * Mb;
-D = K + (k^2) * M;
+fine = setupFineSpace(node, elem, bdFlag, k, opts);
+A = fine.A;
+D = fine.energy;
 Dsolve = energySolver(D);
 
 coarseTimer = tic;
-[Btrial, Btest, AH, lodInfo] = setupCoarseSpace(node, elem, bdFlag, k, nodeH, elemH, bdH, opts, A);
+[Btrial, Btest, AH, lodInfo] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts);
 coarseSetupTime = toc(coarseTimer);
+
+solverMeta = chooseLocalSolverMode(fine, parts, opts.variant, opts);
 
 localTimer = tic;
 switch lower(opts.variant)
     case {'q1', 'dirichlet'}
-        local = setupDirichletLocalSolvers(node, elem, bdFlag, k, parts, size(node, 1), opts.solverMode, opts.useParfor);
+        local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
         variant = 'dirichlet';
     case {'q2', 'impedance'}
-        local = setupImpedanceLocalSolvers(node, elem, k, parts, opts.solverMode, opts.useParfor);
+        local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
         variant = 'impedance';
     otherwise
         error('twoLevelHybridSchwarzHelmholtzLOD2D:variant', ...
@@ -99,8 +99,12 @@ precon.applyEnergyAdjointIMinusQ0 = @applyEnergyAdjointIMinusQ0;
 precon.variant = variant;
 precon.coarseType = opts.coarseType;
 precon.adjointType = opts.adjointType;
+precon.degree = fine.degree;
 precon.A = A;
 precon.energy = D;
+precon.fineSpace = fine;
+precon.coarseSpace = struct('trial', Btrial, 'test', Btest, 'AH', AH, ...
+    'solve', @(r) AH \ r, 'info', lodInfo);
 precon.basis = struct('trial', Btrial, 'test', Btest, 'AH', AH);
 precon.lod = lodInfo;
 precon.local = local.info;
@@ -112,11 +116,16 @@ function opts = localOptions(opts)
 defaults = struct();
 defaults.variant = 'dirichlet';
 defaults.coarseType = 'lod';
+defaults.degree = 1;
+defaults.fineSpace = [];
+defaults.coarseSpace = [];
 defaults.lod = [];
 defaults.lodOptions = struct();
-defaults.solverMode = 'lu';
+defaults.solverMode = 'adaptive';
 defaults.useParfor = false;
 defaults.adjointType = 'energy';
+defaults.localStoredLuLimitGB = 200;
+defaults.localLuFillConstant = 40;
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -127,7 +136,78 @@ end
 end
 
 
-function [Btrial, Btest, AH, info] = setupCoarseSpace(node, elem, bdFlag, k, nodeH, elemH, bdH, opts, A)
+function fine = setupFineSpace(node, elem, bdFlag, k, opts)
+if ~isempty(opts.fineSpace)
+    fine = opts.fineSpace;
+    required = {'degree', 'node', 'elem', 'baseNode', 'baseElem', ...
+        'baseBdFlag', 'A', 'energy', 'p1ToFine'};
+    for i = 1:numel(required)
+        if ~isfield(fine, required{i})
+            error('twoLevelHybridSchwarzHelmholtzLOD2D:fineSpace', ...
+                'Injected fineSpace is missing field "%s".', required{i});
+        end
+    end
+    fine.N = size(fine.node, 1);
+    return;
+end
+
+degree = opts.degree;
+baseElem = elem(:, 1:3);
+if degree == 1
+    baseNode = node;
+    fineNode = node;
+    fineElem = elem;
+    p1ToFine = speye(size(node, 1));
+elseif degree == 2
+    baseNode = node(1:max(baseElem(:)), :);
+    if size(elem, 2) == 3
+        [fineNode, fineElem] = extendMesh2D(baseNode, baseElem, 2);
+    else
+        fineNode = node;
+        fineElem = elem;
+    end
+    p1ToFine = prolongate_P1_P2(baseNode, baseElem);
+else
+    error('twoLevelHybridSchwarzHelmholtzLOD2D:degree', ...
+        'Only degree 1 and 2 are supported by the LXZZ wrapper.');
+end
+
+K = assembleStiffness2D(fineNode, fineElem, degree);
+M = assembleMass2D(fineNode, fineElem, degree);
+Mb = assembleBoundaryMass2D(fineNode, fineElem, bdFlag, degree);
+
+fine = struct();
+fine.degree = degree;
+fine.node = fineNode;
+fine.elem = fineElem;
+fine.bdFlag = bdFlag;
+fine.baseNode = baseNode;
+fine.baseElem = baseElem;
+fine.baseBdFlag = bdFlag;
+fine.K = K;
+fine.M = M;
+fine.boundaryMass = Mb;
+fine.A = K - (k^2) * M - 1i * k * Mb;
+fine.energy = K + (k^2) * M;
+fine.p1ToFine = p1ToFine;
+fine.N = size(fineNode, 1);
+end
+
+
+function [Btrial, Btest, AH, info] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts)
+if ~isempty(opts.coarseSpace)
+    coarse = opts.coarseSpace;
+    Btrial = coarse.trial;
+    Btest = coarse.test;
+    if isfield(coarse, 'AH') && ~isempty(coarse.AH)
+        AH = coarse.AH;
+    else
+        AH = Btest' * fine.A * Btrial;
+    end
+    info = coarse;
+    return;
+end
+
 switch lower(opts.coarseType)
     case 'lod'
         if ~isempty(opts.lod)
@@ -135,21 +215,59 @@ switch lower(opts.coarseType)
         else
             lodOpts = opts.lodOptions;
             lodOpts.solveCoarse = false;
-            lod = buildLODHelmholtz2D(nodeH, elemH, bdH, node, elem, bdFlag, k, 0, 0, lodOpts);
+            lod = buildLODHelmholtz2D(nodeH, elemH, bdH, fine.baseNode, ...
+                fine.baseElem, fine.baseBdFlag, k, 0, 0, lodOpts);
         end
-        Btrial = lod.basis.trial;
-        Btest = lod.basis.test;
-        AH = lod.system.AH;
-        info = struct('object', lod, 'description', 'localized Petrov-Galerkin LOD');
+        Btrial = fine.p1ToFine * lod.basis.trial;
+        Btest = fine.p1ToFine * lod.basis.test;
+        AH = Btest' * fine.A * Btrial;
+        info = struct('object', lod, 'description', ...
+            sprintf('P1 LOD basis embedded into P%d fine space', fine.degree));
     case {'p1', 'standard'}
-        P = prolongateNestedP1(nodeH, elemH, node);
+        P1 = prolongateNestedP1(nodeH, elemH, fine.baseNode);
+        P = fine.p1ToFine * P1;
         Btrial = P;
         Btest = P;
-        AH = P' * A * P;
-        info = struct('object', [], 'description', 'standard nested P1 coarse space');
+        AH = P' * fine.A * P;
+        info = struct('object', [], 'description', ...
+            sprintf('standard nested P1 coarse space embedded into P%d', fine.degree));
     otherwise
         error('twoLevelHybridSchwarzHelmholtzLOD2D:coarseType', ...
             'Unknown coarseType "%s". Use "lod" or "p1".', opts.coarseType);
+end
+end
+
+
+function meta = chooseLocalSolverMode(fine, parts, variant, opts)
+meta = struct();
+meta.requested = opts.solverMode;
+meta.effective = opts.solverMode;
+meta.estimatedStoredLuGB = NaN;
+meta.storedLuLimitGB = opts.localStoredLuLimitGB;
+meta.luFillConstant = opts.localLuFillConstant;
+
+if ~strcmpi(opts.solverMode, 'adaptive')
+    return;
+end
+
+sizes = zeros(numel(parts), 1);
+for s = 1:numel(parts)
+    eIdx = parts(s).elemIdx(:);
+    if isempty(eIdx), continue; end
+    allIdx = unique(fine.elem(eIdx, :));
+    if any(strcmpi(variant, {'q1', 'dirichlet'}))
+        sizes(s) = numel(activeDofsByHatWeight(fine.node, parts(s), allIdx));
+    else
+        sizes(s) = numel(allIdx);
+    end
+end
+
+bytes = sum(16 * opts.localLuFillConstant .* sizes .* log2(max(sizes, 2)));
+meta.estimatedStoredLuGB = bytes / 1024^3;
+if meta.estimatedStoredLuGB <= opts.localStoredLuLimitGB
+    meta.effective = 'lu';
+else
+    meta.effective = 'direct';
 end
 end
 
@@ -171,7 +289,7 @@ x(q, :) = U \ (L \ b(p, :));
 end
 
 
-function local = setupDirichletLocalSolvers(node, elem, bdFlag, k, parts, N, solverMode, useParfor)
+function local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, useParfor)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
@@ -182,113 +300,120 @@ localMatrices = cell(nSub, 1);
 if useParfor
     parfor s = 1:nSub
         [solvers{s}, gIdx{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
-            setupOneDirichlet(node, elem, bdFlag, k, parts(s), N, solverMode);
+            setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
     end
 else
     for s = 1:nSub
         [solvers{s}, gIdx{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
-            setupOneDirichlet(node, elem, bdFlag, k, parts(s), N, solverMode);
+            setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
     end
 end
 
     function y = applyLocal(v)
-        y = zeros(N, 1);
+        y = zeros(fine.N, 1);
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
             rhsj = localMatrices{j}(localFree{j}, :) * v(localAll{j});
-            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, rhsj, solverMode);
+            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, rhsj);
         end
     end
 
     function y = applyInverse(r)
-        y = zeros(N, 1);
+        y = zeros(fine.N, 1);
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
-            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, r(gIdx{j}), solverMode);
+            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, r(gIdx{j}));
         end
     end
 
 local.apply = @applyLocal;
 local.applyInverse = @applyInverse;
-local.info = localStats(gIdx, 'Dirichlet artificial boundary');
+local.info = localStats(gIdx, 'Dirichlet artificial boundary', solverMeta);
 end
 
 
-function [solver, idx, allIdx, freeLocal, Aloc] = setupOneDirichlet(node, elem, bdFlag, k, part, N, solverMode)
-localFree = activeDirichletNodes(node, part);
-localFree = localFree(localFree >= 1 & localFree <= N);
-if isempty(localFree)
+function [solver, idx, allIdx, freeLocal, Aloc] = setupOneDirichlet(fine, k, part, solverMode)
+eIdx = part.elemIdx(:);
+if isempty(eIdx)
     solver = [];
     idx = [];
     allIdx = [];
     freeLocal = [];
     Aloc = sparse(0, 0);
-else
-    idx = localFree(:);
-    eIdx = part.elemIdx(:);
-    allIdx = unique(elem(eIdx, :));
-    g2l = zeros(N, 1);
-    g2l(allIdx) = (1:numel(allIdx))';
-    localElem = g2l(elem(eIdx, :));
-    localNode = node(allIdx, :);
-    localBdFlag = bdFlag(eIdx, :);
-    freeLocal = g2l(idx);
-    Kloc = assembleStiffness2D(localNode, localElem, 1);
-    Mloc = assembleMass2D(localNode, localElem, 1);
-    Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, 1);
-    Aloc = Kloc - (k^2) * Mloc - 1i * k * Mbloc;
-    solver = factorLocalMatrix(Aloc(freeLocal, freeLocal), solverMode);
+    return;
 end
+
+allIdx = unique(fine.elem(eIdx, :));
+localFree = activeDofsByHatWeight(fine.node, part, allIdx);
+if isempty(localFree)
+    solver = [];
+    idx = [];
+    freeLocal = [];
+    Aloc = sparse(0, numel(allIdx));
+    return;
+end
+
+idx = localFree(:);
+g2l = zeros(fine.N, 1);
+g2l(allIdx) = (1:numel(allIdx))';
+localElem = g2l(fine.elem(eIdx, :));
+localNode = fine.node(allIdx, :);
+localBdFlag = fine.bdFlag(eIdx, :);
+freeLocal = g2l(idx);
+Kloc = assembleStiffness2D(localNode, localElem, fine.degree);
+Mloc = assembleMass2D(localNode, localElem, fine.degree);
+Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, fine.degree);
+Aloc = Kloc - (k^2) * Mloc - 1i * k * Mbloc;
+solver = factorLocalMatrix(Aloc(freeLocal, freeLocal), solverMode);
 end
 
 
-function idx = activeDirichletNodes(node, part)
+function idx = activeDofsByHatWeight(node, part, candidateIdx)
 if ~isfield(part, 'weightFun') || isempty(part.weightFun)
-    idx = part.interiorNodeIdx(:);
+    idx = candidateIdx(:);
     return;
 end
 tol = 1e-12;
-w = max(part.weightFun(node(part.nodeIdx, 1), node(part.nodeIdx, 2)), 0);
-idx = part.nodeIdx(w(:) > tol);
+w = max(part.weightFun(node(candidateIdx, 1), node(candidateIdx, 2)), 0);
+idx = candidateIdx(w(:) > tol);
 end
 
 
-function local = setupImpedanceLocalSolvers(node, elem, k, parts, solverMode, useParfor)
-N = size(node, 1);
+function local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, useParfor)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
 weights = cell(nSub, 1);
-nodeWeight = accumulatedNodeWeights(node, elem, parts);
+nodeWeight = accumulatedDofWeights(fine, parts);
 
 if useParfor
     parfor s = 1:nSub
         [solvers{s}, gIdx{s}, weights{s}] = ...
-            setupOneImpedance(node, elem, k, parts, s, nodeWeight, N, solverMode);
+            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
     end
 else
     for s = 1:nSub
         [solvers{s}, gIdx{s}, weights{s}] = ...
-            setupOneImpedance(node, elem, k, parts, s, nodeWeight, N, solverMode);
+            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
     end
 end
 
     function y = applyLocal(v)
-        y = zeros(N, 1);
+        y = zeros(fine.N, 1);
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
-            pell = solveLocal(solvers{j}, weights{j} .* v(gIdx{j}), solverMode);
+            pell = solveLocal(solvers{j}, weights{j} .* v(gIdx{j}));
             y(gIdx{j}) = y(gIdx{j}) + weights{j} .* pell;
         end
     end
 
 local.apply = @applyLocal;
 local.applyInverse = @applyLocal;
-local.info = localStats(gIdx, 'coercive impedance local form');
+local.info = localStats(gIdx, 'coercive impedance local form', solverMeta);
 end
 
 
-function [solver, idx, w] = setupOneImpedance(node, elem, k, parts, s, nodeWeight, N, solverMode)
+function [solver, idx, w] = setupOneImpedance(fine, k, parts, s, nodeWeight, solverMode)
 eIdx = parts(s).elemIdx(:);
 if isempty(eIdx)
     solver = [];
@@ -296,38 +421,51 @@ if isempty(eIdx)
     w = [];
     return;
 end
-idx = unique(elem(eIdx, :));
-g2l = zeros(N, 1);
+idx = unique(fine.elem(eIdx, :));
+g2l = zeros(fine.N, 1);
 g2l(idx) = (1:numel(idx))';
-localNode = node(idx, :);
-localElem = g2l(elem(eIdx, :));
+localNode = fine.node(idx, :);
+localElem = g2l(fine.elem(eIdx, :));
 localBdFlag = localBoundaryFlags(localElem);
 
-Kloc = assembleStiffness2D(localNode, localElem, 1);
-Mloc = assembleMass2D(localNode, localElem, 1);
-Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, 1);
+Kloc = assembleStiffness2D(localNode, localElem, fine.degree);
+Mloc = assembleMass2D(localNode, localElem, fine.degree);
+Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, fine.degree);
 Cloc = Kloc + (k^2) * Mloc - 1i * k * Mbloc;
 solver = factorLocalMatrix(Cloc, solverMode);
-w = localWeights(node, parts, s, idx, nodeWeight);
+w = localWeights(fine.node, parts, s, idx, nodeWeight);
 end
 
 
 function solver = factorLocalMatrix(A, solverMode)
-if strcmpi(solverMode, 'direct')
-    solver = A;
-else
-    [L, U, p, q] = lu(A, 'vector');
-    solver = {L, U, p(:), q(:)};
+mode = lower(solverMode);
+switch mode
+    case {'direct', 'backslash', 'matrix'}
+        solver = struct('mode', 'direct', 'A', A);
+    case {'lu', 'storedlu'}
+        [L, U, p, q] = lu(A, 'vector');
+        solver = struct('mode', 'lu', 'L', L, 'U', U, 'p', p(:), 'q', q(:));
+    otherwise
+        error('twoLevelHybridSchwarzHelmholtzLOD2D:solverMode', ...
+            'Unknown local solver mode "%s".', solverMode);
 end
 end
 
 
-function x = solveLocal(solver, b, solverMode)
-if strcmpi(solverMode, 'direct')
-    x = solver \ b;
-else
-    x = zeros(size(b));
-    x(solver{4}) = solver{2} \ (solver{1} \ b(solver{3}));
+function x = solveLocal(solver, b)
+if isempty(solver)
+    x = zeros(0, 1);
+    return;
+end
+switch solver.mode
+    case 'direct'
+        x = solver.A \ b;
+    case 'lu'
+        x = zeros(size(b));
+        x(solver.q) = solver.U \ (solver.L \ b(solver.p));
+    otherwise
+        error('twoLevelHybridSchwarzHelmholtzLOD2D:solverMode', ...
+            'Unknown stored solver mode "%s".', solver.mode);
 end
 end
 
@@ -343,14 +481,13 @@ bdFlag = reshape(isBoundary, size(localElem, 1), 3);
 end
 
 
-function nodeWeight = accumulatedNodeWeights(node, elem, parts)
-N = size(node, 1);
-nodeWeight = zeros(N, 1);
+function nodeWeight = accumulatedDofWeights(fine, parts)
+nodeWeight = zeros(fine.N, 1);
 useWeightFun = isfield(parts, 'weightFun') && ~isempty(parts(1).weightFun);
 for s = 1:numel(parts)
-    idx = unique(elem(parts(s).elemIdx, :));
+    idx = unique(fine.elem(parts(s).elemIdx, :));
     if useWeightFun
-        raw = max(parts(s).weightFun(node(idx, 1), node(idx, 2)), 0);
+        raw = max(parts(s).weightFun(fine.node(idx, 1), fine.node(idx, 2)), 0);
         nodeWeight(idx) = nodeWeight(idx) + raw(:);
     else
         nodeWeight(idx) = nodeWeight(idx) + 1;
@@ -371,7 +508,7 @@ end
 end
 
 
-function info = localStats(gIdx, boundaryCondition)
+function info = localStats(gIdx, boundaryCondition, solverMeta)
 sizes = cellfun(@numel, gIdx);
 info = struct();
 info.boundaryCondition = boundaryCondition;
@@ -380,4 +517,9 @@ info.localDofMin = min(sizes);
 info.localDofMax = max(sizes);
 info.localDofMean = mean(sizes);
 info.localDofMedian = median(sizes);
+info.solverModeRequested = solverMeta.requested;
+info.solverModeEffective = solverMeta.effective;
+info.estimatedStoredLuGB = solverMeta.estimatedStoredLuGB;
+info.storedLuLimitGB = solverMeta.storedLuLimitGB;
+info.luFillConstant = solverMeta.luFillConstant;
 end
