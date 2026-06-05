@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-06-02
+Updated: 2026-06-05
 
 ## MATLAB Execution
 
@@ -241,9 +241,14 @@ Stable DDM result summaries and ORAS/Helmholtz reproduction notes live in:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **DDM-FEM-Helmholtz-Maxwell** (317 symbols, 310 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **DDM-FEM-Helmholtz-Maxwell** (522 symbols, 513 relationships, 0 execution flows as of 2026-06-05). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> If any GitNexus tool warns the index is stale, refresh the snapshot before relying on graph results. On this Windows/Codex workstation, do **not** assume `npx`, `node` on `PATH`, or `gitnexus.cmd` works: `npx` may be absent, and `node` on `PATH` can resolve to the Codex WindowsApps executable and fail with `Access is denied`.
+>
+> Use the verified direct invocation from the repo root:
+> `C:\Users\Administrator\Documents\Codex\tools\node-v24.14.0-win-x64\node.exe C:\Users\Administrator\Documents\Codex\tools\gitnexus-cli-npm\node_modules\gitnexus\dist\cli\index.js analyze --index-only .`
+>
+> If the refresh fails with `EPERM` on `C:\Users\Administrator\.gitnexus\registry.json`, rerun the same direct invocation with the required filesystem approval because GitNexus must update its global registry outside the workspace. The local Codex hook path config should live at `C:\Users\Administrator\.codex\hooks\.local\gitnexus.paths.ps1` and point to the same Node and GitNexus CLI files.
 
 ## Always Do
 
