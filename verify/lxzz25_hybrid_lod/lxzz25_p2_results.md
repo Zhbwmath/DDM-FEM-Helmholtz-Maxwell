@@ -2,7 +2,7 @@ Reproduction target: LXZZ25-inspired P2 fine-space LOD-DDM experiments
 Created: 2026-06-03
 Updated: 2026-06-03
 Verification entry point: `verify/verify_lxzz25_p2_experiments.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `assemblePlaneWaveBoundaryLoad2D`, `coarseHatPartition2D`, `prolongate_P1_P2`, MATLAB `gmres`
+Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `assemblePlaneWaveBoundaryLoad2D`, `coarseHatPartition2D`, `prolongate_P1_P2`, MATLAB `gmres`
 
 Configuration: P2 fine space, P1 LOD basis embedded by $E_{21}$, $m=2$, Euclidean reference adjoint, memory gate 300.0 GB, permission gate 200.0 GB, time limit 7200 seconds.
 

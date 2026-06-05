@@ -68,9 +68,9 @@ parts = linearPartitionOfUnity2D(parts, [0, 1, 0, 1], [2, 2], 1/8);
 
 opts = struct('lod', lod, 'lodOptions', lodOpts, 'solverMode', 'lu');
 opts.variant = 'dirichlet';
-q1 = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts);
+q1 = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts);
 opts.variant = 'impedance';
-q2 = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts);
+q2 = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts);
 
 rng(1);
 x = randn(size(node, 1), 1) + 1i * randn(size(node, 1), 1);

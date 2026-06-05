@@ -1,8 +1,8 @@
 Reproduction target: Lu--Xu--Zheng--Zou (2025), Section 5 Tables 5.1--5.9.
 Created: 2026-06-01
-Updated: 2026-06-03
+Updated: 2026-06-04
 Verification entry point: `verify/verify_lxzz25_two_level_hybrid_smoke.m`; `verify/verify_lxzz25_article_experiments.m`; `verify/verify_lxzz25_p2_framework.m`; `verify/verify_lxzz25_p2_experiments.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `buildLODHelmholtz2D`, `weightedClementP1`, `coarseHatPartition2D`, `assembleHelmholtz2D`, `assemblePlaneWaveBoundaryLoad2D`, `prolongate_P1_P2`, MATLAB `gmres`
+Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildLODHelmholtz2D`, `weightedClementP1`, `coarseHatPartition2D`, `assembleHelmholtz2D`, `assemblePlaneWaveBoundaryLoad2D`, `prolongate_P1_P2`, MATLAB `gmres`
 
 # LXZZ25 Two-Level Hybrid Schwarz LOD Reproduction Tasks
 
@@ -42,6 +42,53 @@ The P2 extension is verified by `verify/verify_lxzz25_p2_framework.m`. The exper
 - `verify/lxzz25_hybrid_lod/lxzz25_p2_results.md`
 
 The P2 harness keeps the workstation gates: rows above 300 GB are blocked, rows above 200 GB are marked as requiring permission unless `LXZZ25_P2_ALLOW_GT_200=1`, and default interactive runs are capped by `LXZZ25_P2_MAX_RUN_DOF`.
+
+## Abstract Wrapper Contracts
+
+The two-level wrapper is organized around three operator objects.
+
+The fine-space object stores the fine matrix data:
+
+$$
+A_h,\qquad D_h=K_h+k^2M_h,
+$$
+
+together with fine coordinates, fine element DOFs, and the base P1 mesh used by the LOD builder. For P2 runs, the default fine builder stores the P1-to-P2 embedding $E_{21}$.
+
+The coarse-space object may be injected through `opts.coarseSpace`. It can provide native trial/test bases and an embedding matrix $E_c$:
+
+$$
+B_{\rm trial}=E_cB_{\rm trial}^{\rm native},\qquad
+B_{\rm test}=E_cB_{\rm test}^{\rm native}.
+$$
+
+If no coarse matrix is supplied, the wrapper recomputes
+
+$$
+A_H=B_{\rm test}^*A_hB_{\rm trial}.
+$$
+
+The existing P1 LOD/P2 fine experiment uses
+
+$$
+E_c=E_{21},\qquad
+B_{\rm trial}^{\rm native}=B_1^{\rm trial},\qquad
+B_{\rm test}^{\rm native}=B_1^{\rm test}.
+$$
+
+The local-solver object may be injected through `opts.localSolver`. Default local solvers expose local-to-global extension matrices. For Dirichlet subdomains,
+
+$$
+M_D^{-1}r=\sum_\ell E_\ell A_{\ell,D}^{-1}E_\ell^*r,
+$$
+
+where $E_\ell$ injects positive-hat local DOFs into the fine space. For impedance subdomains,
+
+$$
+M_I^{-1}r=\sum_\ell W_\ell C_\ell^{-1}W_\ell^*r,
+$$
+
+where $W_\ell$ is the weighted extension built from partition weights evaluated at fine-space DOF coordinates.
 
 The crucial correction is that the article's \(Q_m^{(1)}\) and \(Q_m^{(2)}\) are function-level preconditioned operators,
 \[

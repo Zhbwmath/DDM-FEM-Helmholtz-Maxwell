@@ -304,7 +304,7 @@ lodOpts = struct('oversampling', c.m, 'solveCoarse', false, ...
 preOpts = struct('variant', c.variant, 'coarseType', c.coarseType, ...
     'lodOptions', lodOpts, 'solverMode', cfg.solverMode, 'useParfor', cfg.useParfor, ...
     'adjointType', cfg.adjointType);
-pre = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, c.kappa, parts, nodeH, elemH, bdH, preOpts);
+pre = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, c.kappa, parts, nodeH, elemH, bdH, preOpts);
 
 b = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, c.kappa, 1);
 applyTime = 0;
@@ -503,7 +503,7 @@ fprintf(fid, 'Reproduction target: Lu--Xu--Zheng--Zou (2025), Section 5 Tables 5
 fprintf(fid, 'Created: 2026-06-01\n');
 fprintf(fid, 'Updated: 2026-06-01\n');
 fprintf(fid, 'Verification entry point: `verify/verify_lxzz25_article_experiments.m`\n');
-fprintf(fid, 'Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `buildLODHelmholtz2D`, `coarseHatPartition2D`, MATLAB `gmres`\n\n');
+fprintf(fid, 'Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildLODHelmholtz2D`, `coarseHatPartition2D`, MATLAB `gmres`\n\n');
 fprintf(fid, '# LXZZ25 Article Experiment Results\n\n');
 fprintf(fid, 'Memory limit: %.1f GB. Per-experiment time limit: %.0f seconds. Adjoint type: `%s`. Interactive run cap: `N <= %d` and coarse elements `<= %d`; set `LXZZ25_RUN_ALL_PERMITTED=1` to run all memory-permitted rows.\n\n', ...
     cfg.memoryLimitGB, cfg.timeLimitS, cfg.adjointType, cfg.maxRunDof, cfg.maxRunCoarseElem);

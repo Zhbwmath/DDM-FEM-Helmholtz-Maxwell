@@ -189,7 +189,7 @@ preOpts = struct('degree', 2, 'variant', c.variant, 'coarseType', 'lod', ...
     'localLuFillConstant', cfg.luFillConstant, 'useParfor', cfg.useParfor, ...
     'adjointType', 'reference');
 
-pre = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, c.k, ...
+pre = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, c.k, ...
     parts, nodeH, elemH, bdH, preOpts);
 b = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, c.k, 2);
 tSolve = tic;
@@ -257,7 +257,7 @@ fprintf(fid, 'Reproduction target: LXZZ25-inspired P2 fine-space LOD-DDM experim
 fprintf(fid, 'Created: 2026-06-03\n');
 fprintf(fid, 'Updated: 2026-06-03\n');
 fprintf(fid, 'Verification entry point: `verify/verify_lxzz25_p2_experiments.m`\n');
-fprintf(fid, 'Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `assemblePlaneWaveBoundaryLoad2D`, `coarseHatPartition2D`, `prolongate_P1_P2`, MATLAB `gmres`\n\n');
+fprintf(fid, 'Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `assemblePlaneWaveBoundaryLoad2D`, `coarseHatPartition2D`, `prolongate_P1_P2`, MATLAB `gmres`\n\n');
 fprintf(fid, 'Configuration: P2 fine space, P1 LOD basis embedded by $E_{21}$, $m=%g$, Euclidean reference adjoint, memory gate %.1f GB, permission gate %.1f GB, time limit %.0f seconds.\n\n', ...
     cfg.m, cfg.memoryLimitGB, cfg.permissionMemoryGB, cfg.timeLimitS);
 fprintf(fid, '| k | variant | degree | h^{-1} | H^{-1} | m | P2 dofs | estimate GB | local mode | LU estimate GB | GMRES it | relres | status | notes |\n');

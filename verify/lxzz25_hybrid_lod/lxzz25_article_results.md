@@ -2,7 +2,7 @@ Reproduction target: Lu--Xu--Zheng--Zou (2025), Section 5 Tables 5.1--5.9.
 Created: 2026-06-01
 Updated: 2026-06-01
 Verification entry point: `verify/verify_lxzz25_article_experiments.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtzLOD2D`, `buildLODHelmholtz2D`, `coarseHatPartition2D`, MATLAB `gmres`
+Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildLODHelmholtz2D`, `coarseHatPartition2D`, MATLAB `gmres`
 
 # LXZZ25 Article Experiment Results
 

@@ -1,5 +1,5 @@
-function precon = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts)
-% TWOLEVELHYBRIDSCHWARZHELMHOLTZLOD2D  LXZZ25 two-level hybrid Schwarz action.
+function precon = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, parts, nodeH, elemH, bdH, opts)
+% TWOLEVELHYBRIDSCHWARZHELMHOLTZ2D  LXZZ25 two-level hybrid Schwarz action.
 
 if nargin < 9 || isempty(opts), opts = struct(); end
 opts = localOptions(opts);
@@ -10,27 +10,15 @@ D = fine.energy;
 Dsolve = energySolver(D);
 
 coarseTimer = tic;
-[Btrial, Btest, AH, lodInfo] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts);
+[coarse, lodInfo] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts);
 coarseSetupTime = toc(coarseTimer);
 
-solverMeta = chooseLocalSolverMode(fine, parts, opts.variant, opts);
-
 localTimer = tic;
-switch lower(opts.variant)
-    case {'q1', 'dirichlet'}
-        local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
-        variant = 'dirichlet';
-    case {'q2', 'impedance'}
-        local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
-        variant = 'impedance';
-    otherwise
-        error('twoLevelHybridSchwarzHelmholtzLOD2D:variant', ...
-            'Unknown variant "%s". Use "dirichlet" or "impedance".', opts.variant);
-end
+[local, variant] = setupLocalSolver(fine, k, parts, opts);
 localSetupTime = toc(localTimer);
 
     function y = applyM0Inverse(r)
-        y = Btrial * (AH \ (Btest' * r));
+        y = coarse.trial * coarse.solve(coarse.test' * r);
     end
 
     function y = applyQ0(v)
@@ -38,11 +26,11 @@ localSetupTime = toc(localTimer);
     end
 
     function y = applyQ0EuclideanAdjoint(w)
-        y = A' * (Btest * (AH' \ (Btrial' * w)));
+        y = A' * (coarse.test * coarse.solveAdjoint(coarse.trial' * w));
     end
 
     function y = applyQ0PaperAdjoint(v)
-        y = Btest * (AH' \ (Btrial' * (A' * v)));
+        y = coarse.test * coarse.solveAdjoint(coarse.trial' * (A' * v));
     end
 
     function y = applyQ0Adjoint(v)
@@ -54,7 +42,7 @@ localSetupTime = toc(localTimer);
             case {'matrix', 'q0h'}
                 y = applyQ0EuclideanAdjoint(v);
             otherwise
-                error('twoLevelHybridSchwarzHelmholtzLOD2D:adjointType', ...
+                error('twoLevelHybridSchwarzHelmholtz2D:adjointType', ...
                     'Unknown adjointType "%s".', opts.adjointType);
         end
     end
@@ -68,7 +56,7 @@ localSetupTime = toc(localTimer);
             case {'matrix', 'q0h'}
                 y = v - applyQ0EuclideanAdjoint(v);
             otherwise
-                error('twoLevelHybridSchwarzHelmholtzLOD2D:adjointType', ...
+                error('twoLevelHybridSchwarzHelmholtz2D:adjointType', ...
                     'Unknown adjointType "%s".', opts.adjointType);
         end
     end
@@ -103,10 +91,10 @@ precon.degree = fine.degree;
 precon.A = A;
 precon.energy = D;
 precon.fineSpace = fine;
-precon.coarseSpace = struct('trial', Btrial, 'test', Btest, 'AH', AH, ...
-    'solve', @(r) AH \ r, 'info', lodInfo);
-precon.basis = struct('trial', Btrial, 'test', Btest, 'AH', AH);
+precon.coarseSpace = coarse;
+precon.basis = struct('trial', coarse.trial, 'test', coarse.test, 'AH', coarse.AH);
 precon.lod = lodInfo;
+precon.localSolver = local;
 precon.local = local.info;
 precon.timing = struct('coarseSetup', coarseSetupTime, 'localSetup', localSetupTime);
 end
@@ -119,6 +107,7 @@ defaults.coarseType = 'lod';
 defaults.degree = 1;
 defaults.fineSpace = [];
 defaults.coarseSpace = [];
+defaults.localSolver = [];
 defaults.lod = [];
 defaults.lodOptions = struct();
 defaults.solverMode = 'adaptive';
@@ -140,14 +129,22 @@ function fine = setupFineSpace(node, elem, bdFlag, k, opts)
 if ~isempty(opts.fineSpace)
     fine = opts.fineSpace;
     required = {'degree', 'node', 'elem', 'baseNode', 'baseElem', ...
-        'baseBdFlag', 'A', 'energy', 'p1ToFine'};
+        'baseBdFlag', 'A', 'energy'};
     for i = 1:numel(required)
         if ~isfield(fine, required{i})
-            error('twoLevelHybridSchwarzHelmholtzLOD2D:fineSpace', ...
+            error('twoLevelHybridSchwarzHelmholtz2D:fineSpace', ...
                 'Injected fineSpace is missing field "%s".', required{i});
         end
     end
     fine.N = size(fine.node, 1);
+    if ~isfield(fine, 'p1ToFine') || isempty(fine.p1ToFine)
+        if size(fine.baseNode, 1) == fine.N
+            fine.p1ToFine = speye(fine.N);
+        else
+            error('twoLevelHybridSchwarzHelmholtz2D:fineSpace', ...
+                'Injected fineSpace needs p1ToFine for default P1 coarse builders.');
+        end
+    end
     return;
 end
 
@@ -168,7 +165,7 @@ elseif degree == 2
     end
     p1ToFine = prolongate_P1_P2(baseNode, baseElem);
 else
-    error('twoLevelHybridSchwarzHelmholtzLOD2D:degree', ...
+    error('twoLevelHybridSchwarzHelmholtz2D:degree', ...
         'Only degree 1 and 2 are supported by the LXZZ wrapper.');
 end
 
@@ -194,17 +191,10 @@ fine.N = size(fineNode, 1);
 end
 
 
-function [Btrial, Btest, AH, info] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts)
+function [coarse, info] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts)
 if ~isempty(opts.coarseSpace)
-    coarse = opts.coarseSpace;
-    Btrial = coarse.trial;
-    Btest = coarse.test;
-    if isfield(coarse, 'AH') && ~isempty(coarse.AH)
-        AH = coarse.AH;
-    else
-        AH = Btest' * fine.A * Btrial;
-    end
-    info = coarse;
+    coarse = normalizeCoarseSpace(opts.coarseSpace, fine);
+    info = coarse.info;
     return;
 end
 
@@ -218,22 +208,105 @@ switch lower(opts.coarseType)
             lod = buildLODHelmholtz2D(nodeH, elemH, bdH, fine.baseNode, ...
                 fine.baseElem, fine.baseBdFlag, k, 0, 0, lodOpts);
         end
-        Btrial = fine.p1ToFine * lod.basis.trial;
-        Btest = fine.p1ToFine * lod.basis.test;
-        AH = Btest' * fine.A * Btrial;
+        coarse = normalizeCoarseSpace(struct('nativeTrial', lod.basis.trial, ...
+            'nativeTest', lod.basis.test, 'embedding', fine.p1ToFine, ...
+            'object', lod, 'description', ...
+            sprintf('P1 LOD basis embedded into P%d fine space', fine.degree)), fine);
         info = struct('object', lod, 'description', ...
             sprintf('P1 LOD basis embedded into P%d fine space', fine.degree));
     case {'p1', 'standard'}
         P1 = prolongateNestedP1(nodeH, elemH, fine.baseNode);
-        P = fine.p1ToFine * P1;
-        Btrial = P;
-        Btest = P;
-        AH = P' * fine.A * P;
+        coarse = normalizeCoarseSpace(struct('nativeTrial', P1, ...
+            'nativeTest', P1, 'embedding', fine.p1ToFine, ...
+            'object', [], 'description', ...
+            sprintf('standard nested P1 coarse space embedded into P%d', fine.degree)), fine);
         info = struct('object', [], 'description', ...
             sprintf('standard nested P1 coarse space embedded into P%d', fine.degree));
     otherwise
-        error('twoLevelHybridSchwarzHelmholtzLOD2D:coarseType', ...
+        error('twoLevelHybridSchwarzHelmholtz2D:coarseType', ...
             'Unknown coarseType "%s". Use "lod" or "p1".', opts.coarseType);
+end
+end
+
+
+function coarse = normalizeCoarseSpace(raw, fine)
+if isfield(raw, 'embedding') && ~isempty(raw.embedding)
+    embedding = raw.embedding;
+elseif isfield(raw, 'E') && ~isempty(raw.E)
+    embedding = raw.E;
+else
+    embedding = [];
+end
+
+if isfield(raw, 'nativeTrial')
+    nativeTrial = raw.nativeTrial;
+elseif isfield(raw, 'trial')
+    nativeTrial = raw.trial;
+else
+    error('twoLevelHybridSchwarzHelmholtz2D:coarseSpace', ...
+        'coarseSpace must define trial or nativeTrial.');
+end
+
+if isfield(raw, 'nativeTest')
+    nativeTest = raw.nativeTest;
+elseif isfield(raw, 'test')
+    nativeTest = raw.test;
+else
+    nativeTest = nativeTrial;
+end
+
+if isempty(embedding)
+    if size(nativeTrial, 1) == fine.N
+        embedding = speye(fine.N);
+    else
+        error('twoLevelHybridSchwarzHelmholtz2D:coarseSpace', ...
+            'coarseSpace basis is not in fine space; provide embedding matrix.');
+    end
+end
+
+trial = embedding * nativeTrial;
+test = embedding * nativeTest;
+if size(trial, 1) ~= fine.N || size(test, 1) ~= fine.N
+    error('twoLevelHybridSchwarzHelmholtz2D:coarseSpace', ...
+        'Embedded coarse trial/test bases must have one row per fine DOF.');
+end
+
+if isfield(raw, 'AH') && ~isempty(raw.AH)
+    AH = raw.AH;
+else
+    AH = test' * fine.A * trial;
+end
+
+coarse = struct();
+coarse.trial = trial;
+coarse.test = test;
+coarse.nativeTrial = nativeTrial;
+coarse.nativeTest = nativeTest;
+coarse.embedding = embedding;
+coarse.AH = AH;
+if isfield(raw, 'solve') && isa(raw.solve, 'function_handle')
+    coarse.solve = raw.solve;
+else
+    coarse.solve = @(r) AH \ r;
+end
+if isfield(raw, 'solveAdjoint') && isa(raw.solveAdjoint, 'function_handle')
+    coarse.solveAdjoint = raw.solveAdjoint;
+else
+    coarse.solveAdjoint = @(r) AH' \ r;
+end
+coarse.info = rmfieldIfPresent(raw, {'trial', 'test', 'nativeTrial', ...
+    'nativeTest', 'embedding', 'E', 'AH', 'solve', 'solveAdjoint'});
+if ~isfield(coarse.info, 'description')
+    coarse.info.description = 'abstract coarse space';
+end
+end
+
+
+function s = rmfieldIfPresent(s, names)
+for i = 1:numel(names)
+    if isfield(s, names{i})
+        s = rmfield(s, names{i});
+    end
 end
 end
 
@@ -272,6 +345,81 @@ end
 end
 
 
+function [local, variant] = setupLocalSolver(fine, k, parts, opts)
+if ~isempty(opts.localSolver)
+    local = normalizeLocalSolver(opts.localSolver, fine);
+    if isfield(local.info, 'variant') && ~isempty(local.info.variant)
+        variant = local.info.variant;
+    else
+        variant = 'abstract';
+    end
+    return;
+end
+
+solverMeta = chooseLocalSolverMode(fine, parts, opts.variant, opts);
+switch lower(opts.variant)
+    case {'q1', 'dirichlet'}
+        local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
+        variant = 'dirichlet';
+    case {'q2', 'impedance'}
+        local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
+        variant = 'impedance';
+    otherwise
+        error('twoLevelHybridSchwarzHelmholtz2D:variant', ...
+            'Unknown variant "%s". Use "dirichlet" or "impedance".', opts.variant);
+end
+end
+
+
+function local = normalizeLocalSolver(raw, fine)
+local = raw;
+if isfield(raw, 'applyInverse') && isa(raw.applyInverse, 'function_handle')
+    local.applyInverse = raw.applyInverse;
+    if ~isfield(local, 'applyLocal') || ~isa(local.applyLocal, 'function_handle')
+        local.applyLocal = raw.applyInverse;
+    end
+elseif isfield(raw, 'extensions') && isfield(raw, 'solveLocal')
+    extensions = raw.extensions;
+    solveLocalHandles = raw.solveLocal;
+    if ~iscell(extensions), extensions = {extensions}; end
+    if ~iscell(solveLocalHandles), solveLocalHandles = {solveLocalHandles}; end
+    local.applyInverse = @(r) applyAbstractExtensions(r, extensions, solveLocalHandles, fine.N);
+    local.applyLocal = local.applyInverse;
+else
+    error('twoLevelHybridSchwarzHelmholtz2D:localSolver', ...
+        'localSolver must define applyInverse or extensions plus solveLocal.');
+end
+
+if ~isfield(local, 'info') || isempty(local.info)
+    local.info = struct();
+end
+if ~isfield(local.info, 'boundaryCondition')
+    local.info.boundaryCondition = 'abstract local solver';
+end
+if isfield(raw, 'extensions')
+    exts = raw.extensions;
+    if ~iscell(exts), exts = {exts}; end
+    local.info.extensionNonzeros = sum(cellfun(@nnz, exts));
+    local.info.nSubdomains = numel(exts);
+end
+end
+
+
+function y = applyAbstractExtensions(r, extensions, solveLocalHandles, N)
+y = zeros(N, 1);
+for j = 1:numel(extensions)
+    Ej = extensions{j};
+    if isempty(Ej), continue; end
+    solvej = solveLocalHandles{min(j, numel(solveLocalHandles))};
+    if isa(solvej, 'function_handle')
+        y = y + Ej * solvej(Ej' * r);
+    else
+        y = y + Ej * (solvej \ (Ej' * r));
+    end
+end
+end
+
+
 function solve = energySolver(D)
 try
     R = chol(D);
@@ -293,18 +441,19 @@ function local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, useParfo
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
+extensions = cell(nSub, 1);
 localAll = cell(nSub, 1);
 localFree = cell(nSub, 1);
 localMatrices = cell(nSub, 1);
 
 if useParfor
     parfor s = 1:nSub
-        [solvers{s}, gIdx{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
+        [solvers{s}, gIdx{s}, extensions{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
             setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
     end
 else
     for s = 1:nSub
-        [solvers{s}, gIdx{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
+        [solvers{s}, gIdx{s}, extensions{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
             setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
     end
 end
@@ -314,7 +463,7 @@ end
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
             rhsj = localMatrices{j}(localFree{j}, :) * v(localAll{j});
-            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, rhsj);
+            y = y + extensions{j} * solveLocal(solvers{j}, rhsj);
         end
     end
 
@@ -322,21 +471,24 @@ end
         y = zeros(fine.N, 1);
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
-            y(gIdx{j}) = y(gIdx{j}) + solveLocal(solvers{j}, r(gIdx{j}));
+            y = y + extensions{j} * solveLocal(solvers{j}, extensions{j}' * r);
         end
     end
 
 local.apply = @applyLocal;
 local.applyInverse = @applyInverse;
+local.extensions = extensions;
 local.info = localStats(gIdx, 'Dirichlet artificial boundary', solverMeta);
+local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
 end
 
 
-function [solver, idx, allIdx, freeLocal, Aloc] = setupOneDirichlet(fine, k, part, solverMode)
+function [solver, idx, extension, allIdx, freeLocal, Aloc] = setupOneDirichlet(fine, k, part, solverMode)
 eIdx = part.elemIdx(:);
 if isempty(eIdx)
     solver = [];
     idx = [];
+    extension = sparse(fine.N, 0);
     allIdx = [];
     freeLocal = [];
     Aloc = sparse(0, 0);
@@ -348,12 +500,14 @@ localFree = activeDofsByHatWeight(fine.node, part, allIdx);
 if isempty(localFree)
     solver = [];
     idx = [];
+    extension = sparse(fine.N, 0);
     freeLocal = [];
     Aloc = sparse(0, numel(allIdx));
     return;
 end
 
 idx = localFree(:);
+extension = sparse(idx, 1:numel(idx), 1, fine.N, numel(idx));
 g2l = zeros(fine.N, 1);
 g2l(allIdx) = (1:numel(allIdx))';
 localElem = g2l(fine.elem(eIdx, :));
@@ -383,17 +537,17 @@ function local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, useParfo
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
-weights = cell(nSub, 1);
+extensions = cell(nSub, 1);
 nodeWeight = accumulatedDofWeights(fine, parts);
 
 if useParfor
     parfor s = 1:nSub
-        [solvers{s}, gIdx{s}, weights{s}] = ...
+        [solvers{s}, gIdx{s}, extensions{s}] = ...
             setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
     end
 else
     for s = 1:nSub
-        [solvers{s}, gIdx{s}, weights{s}] = ...
+        [solvers{s}, gIdx{s}, extensions{s}] = ...
             setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
     end
 end
@@ -402,23 +556,24 @@ end
         y = zeros(fine.N, 1);
         for j = 1:nSub
             if isempty(gIdx{j}), continue; end
-            pell = solveLocal(solvers{j}, weights{j} .* v(gIdx{j}));
-            y(gIdx{j}) = y(gIdx{j}) + weights{j} .* pell;
+            y = y + extensions{j} * solveLocal(solvers{j}, extensions{j}' * v);
         end
     end
 
 local.apply = @applyLocal;
 local.applyInverse = @applyLocal;
+local.extensions = extensions;
 local.info = localStats(gIdx, 'coercive impedance local form', solverMeta);
+local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
 end
 
 
-function [solver, idx, w] = setupOneImpedance(fine, k, parts, s, nodeWeight, solverMode)
+function [solver, idx, extension] = setupOneImpedance(fine, k, parts, s, nodeWeight, solverMode)
 eIdx = parts(s).elemIdx(:);
 if isempty(eIdx)
     solver = [];
     idx = [];
-    w = [];
+    extension = sparse(fine.N, 0);
     return;
 end
 idx = unique(fine.elem(eIdx, :));
@@ -434,6 +589,7 @@ Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, fine.degree);
 Cloc = Kloc + (k^2) * Mloc - 1i * k * Mbloc;
 solver = factorLocalMatrix(Cloc, solverMode);
 w = localWeights(fine.node, parts, s, idx, nodeWeight);
+extension = sparse(idx, 1:numel(idx), w, fine.N, numel(idx));
 end
 
 
@@ -446,7 +602,7 @@ switch mode
         [L, U, p, q] = lu(A, 'vector');
         solver = struct('mode', 'lu', 'L', L, 'U', U, 'p', p(:), 'q', q(:));
     otherwise
-        error('twoLevelHybridSchwarzHelmholtzLOD2D:solverMode', ...
+        error('twoLevelHybridSchwarzHelmholtz2D:solverMode', ...
             'Unknown local solver mode "%s".', solverMode);
 end
 end
@@ -464,7 +620,7 @@ switch solver.mode
         x = zeros(size(b));
         x(solver.q) = solver.U \ (solver.L \ b(solver.p));
     otherwise
-        error('twoLevelHybridSchwarzHelmholtzLOD2D:solverMode', ...
+        error('twoLevelHybridSchwarzHelmholtz2D:solverMode', ...
             'Unknown stored solver mode "%s".', solver.mode);
 end
 end

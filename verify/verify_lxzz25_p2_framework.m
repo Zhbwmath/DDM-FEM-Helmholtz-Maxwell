@@ -40,7 +40,7 @@ lodOpts = struct('oversampling', m, 'solveCoarse', false, ...
 opts = struct('degree', 2, 'variant', 'dirichlet', 'coarseType', 'lod', ...
     'lodOptions', lodOpts, 'solverMode', 'adaptive', 'useParfor', false, ...
     'adjointType', 'reference');
-preD = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, ...
+preD = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, ...
     parts, nodeH, elemH, bdH, opts);
 AHcheck = preD.basis.test' * preD.A * preD.basis.trial;
 relAH = norm(AHcheck - preD.basis.AH, 'fro') / max(1, norm(preD.basis.AH, 'fro'));
@@ -48,8 +48,31 @@ assert(size(preD.basis.trial, 1) == size(node2, 1), 'Embedded LOD trial basis is
 assert(relAH < 1e-12, 'P2 coarse matrix was not recomputed from embedded basis.');
 fprintf('PASSED  (relAH %.3e)\n', relAH);
 
-%% ---- Test 3: P2 Dirichlet masks and impedance partition weights ----------
-fprintf('Test 3: P2 local DOF masks and weights ... ');
+%% ---- Test 3: Abstract coarse/local injection -----------------------------
+fprintf('Test 3: abstract coarse and local solver injection ... ');
+rng(2);
+r = randn(size(node2, 1), 1) + 1i * randn(size(node2, 1), 1);
+coarseAbs = struct('nativeTrial', preD.lod.object.basis.trial, ...
+    'nativeTest', preD.lod.object.basis.test, 'embedding', E21);
+optsAbs = opts;
+optsAbs.coarseSpace = coarseAbs;
+optsAbs.localSolver = preD.localSolver;
+preAbs = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, ...
+    parts, nodeH, elemH, bdH, optsAbs);
+coarseErr = norm(preAbs.coarseSpace.trial - preD.coarseSpace.trial, 'fro') / ...
+    max(1, norm(preD.coarseSpace.trial, 'fro'));
+localErr = norm(preAbs.applyResidual(r) - preD.applyResidual(r)) / ...
+    max(1, norm(preD.applyResidual(r)));
+assert(coarseErr < 1e-13, 'Injected coarse embedding changed the P2 coarse basis.');
+assert(localErr < 1e-12, 'Injected abstract local solver changed applyResidual.');
+assert(size(preAbs.coarseSpace.embedding, 1) == size(node2, 1), ...
+    'Coarse embedding does not map into the P2 fine space.');
+assert(isfield(preD.localSolver, 'extensions') && nnz(preD.localSolver.extensions{1}) > 0, ...
+    'Default local solver did not expose local-to-global extension matrices.');
+fprintf('PASSED\n');
+
+%% ---- Test 4: P2 Dirichlet masks and impedance partition weights ----------
+fprintf('Test 4: P2 local DOF masks and weights ... ');
 dirCounts = zeros(numel(parts), 1);
 weightSum = zeros(size(node2, 1), 1);
 covered = false(size(node2, 1), 1);
@@ -66,13 +89,13 @@ assert(abs(min(dirCounts) - preD.local.localDofMin) <= 0, ...
 assert(all(weightSum(covered) > 0), 'Some covered P2 DOFs have zero accumulated impedance weight.');
 fprintf('PASSED\n');
 
-%% ---- Test 4: P2 Q1/Q2 small GMRES smoke ---------------------------------
-fprintf('Test 4: P2 Q1/Q2 Euclidean GMRES smoke ...\n');
+%% ---- Test 5: P2 Q1/Q2 small GMRES smoke ---------------------------------
+fprintf('Test 5: P2 Q1/Q2 Euclidean GMRES smoke ...\n');
 b2 = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, k, 2);
 variants = {'dirichlet', 'impedance'};
 for i = 1:numel(variants)
     opts.variant = variants{i};
-    pre = twoLevelHybridSchwarzHelmholtzLOD2D(node, elem, bdFlag, k, ...
+    pre = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, ...
         parts, nodeH, elemH, bdH, opts);
     tApply = tic;
     [~, flag, relres, iter] = gmres(pre.A, b2, [], 1e-6, 30, @pre.applyResidual);
