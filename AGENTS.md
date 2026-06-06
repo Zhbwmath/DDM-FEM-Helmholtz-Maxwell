@@ -1,15 +1,16 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-06-05
+Updated: 2026-06-07
 
 ## MATLAB Execution
 
-- **Always run MATLAB silently**: use `-nosplash -nodesktop -batch` — no console windows.
+- **Prefer the MATLAB MCP server when it is installed and healthy.** For MATLAB inspection, small code evaluation, scripts, tests, and Code Analyzer checks, use the available MCP tools first (`detect_matlab_toolboxes`, `evaluate_matlab_code`, `run_matlab_file`, `run_matlab_test_file`, `check_matlab_code`). Run from the repo root or pass the project path so the session executes with `addpath(genpath('.'))` when repo utilities are needed.
+- **Smoke-test MCP before relying on it.** A successful `detect_matlab_toolboxes` or a small `evaluate_matlab_code` call is enough to treat MCP as working for the current session. If the MCP server is missing, unresponsive, using the wrong MATLAB installation, or fails before MATLAB code starts, record that failure and use the batch fallback below.
+- **Batch fallback:** run MATLAB silently with `-nosplash -nodesktop -batch` and no console windows. For a script, use `matlab -nosplash -nodesktop -batch "addpath(genpath('.')); run('script.m');"`. For inline code, use `matlab -nosplash -nodesktop -batch "addpath(genpath('.')); <code>;"`.
 - **Never use `-noFigureWindows`** unless the user explicitly asks to suppress all graphics. Experiment figures must display.
-- For running a script: `matlab -nosplash -nodesktop -batch "addpath(genpath('.')); run('script.m');"`
-- For running inline code: `matlab -nosplash -nodesktop -batch "addpath(genpath('.')); <code>;"`
-- Check for MATLAB at `C:\Program Files\MATLAB\R2023a\bin\matlab.exe` first, then fall back to `matlab` on PATH.
+- For batch fallback, check for MATLAB at `C:\Program Files\MATLAB\R2023a\bin\matlab.exe` first, then fall back to `matlab` on PATH.
+- **License errors in sandbox:** if MCP or batch MATLAB fails with a license checkout/license manager error from the Codex sandbox, treat it as an environment/licensing problem, not a numerical-code failure. Report the exact license error text or license manager code, then retry the same MATLAB action outside the sandbox only with the required user approval. Do not edit license files, hard-code license servers, expose license numbers in committed files, or change repo code to work around licensing. If approval is denied or the license still fails outside the sandbox, mark MATLAB verification as blocked by licensing and continue only with non-executing checks.
 
 ## HPC Rules (Workstation: 48 cores, 549 GB RAM)
 
