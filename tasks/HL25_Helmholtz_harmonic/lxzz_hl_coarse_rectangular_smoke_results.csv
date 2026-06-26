@@ -1,0 +1,3 @@
+k,degree,coarseType,variant,beta,rho,nu,fineHInv,localHInv,overlap,ndof,nSubdomains,supportSteps,localDofEstimate,rawCoarseEstimate,estimateGB,coarseDimension,rawCoarseDimension,localMode,localDofMin,localDofMax,localDofMean,gmresIterations,flag,finalRelres,resvecLength,setupS,solveS,totalS,status,notes
+16,1,economic,dirichlet,0.6,0.2871745887492587,3,64,16,0.0625,4225,256,12,169,1536,0.1231197715796292,1536,1536,lu,64,121,112.890625,10,0,6.168143125159679e-07,11,3.2572524,0.3918314,4.5491595,ran,
+16,1,economic,impedance,0.6,0.2871745887492587,3,64,16,0.0625,4225,256,12,169,1536,0.1231197715796292,1536,1536,lu,81,169,156.25,6,0,9.226100933268585e-07,7,3.4684497,0.2395975,4.4074719,ran,

@@ -1,0 +1,9 @@
+k,beta,degree,coarseType,variant,nu,rho,fineHInv,localHInv,coarseHInv,localOverlap,coarseOverlap,ndof,nLocalSubdomains,nCoarseSubdomains,coarseLocalDofEstimate,rawCoarseEstimate,estimateGB,coarseDimension,rawCoarseDimension,gmresIterations,flag,finalRelres,resvecLength,setupS,solveS,totalS,status,notes
+32,0.4,1,economic,dirichlet,8,0.1767766952966369,192,32,4,0.03125,0.0625,37249,1024,16,5329,256,0.4065234370162164,256,256,49,0,9.31672714107422e-07,50,6.7445641,15.7127703,22.7958648,ran,
+32,0.5,1,economic,dirichlet,6,0.2102241038134287,192,32,6,0.03125,0.04166666666666666,37249,1024,36,2401,432,0.3823109661259708,432,432,47,0,5.726748940960888e-07,48,6.3629989,15.7490618,22.2558801,ran,
+32,0.6,1,economic,dirichlet,4,0.25,192,32,8,0.03125,0.03125,37249,1024,64,1369,512,0.3658069468038953,512,512,32,0,8.459358689987621e-07,33,6.896473199999999,10.3403105,17.3878796,ran,
+32,0.7,1,economic,dirichlet,3,0.2973017787506803,352,32,11,0.03125,0.02272727272727273,124609,1024,121,2401,726,1.281426478841952,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,estimated_dof_cap,Above adaptive run cap N=80000.
+64,0.4,1,economic,dirichlet,12,0.1435872943746294,640,64,5,0.015625,0.05,410881,4096,25,37636,600,5.269087486756454,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,estimated_dof_cap,Above adaptive run cap N=80000.
+64,0.5,1,economic,dirichlet,8,0.1767766952966369,512,64,8,0.015625,0.03125,263169,4096,64,9409,1024,3.01638595202975,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,estimated_dof_cap,Above adaptive run cap N=80000.
+64,0.6,1,economic,dirichlet,5,0.217637640824031,576,64,12,0.015625,0.02083333333333333,332929,4096,144,5329,1440,3.652900752380174,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,estimated_dof_cap,Above adaptive run cap N=80000.
+64,0.7,1,economic,dirichlet,3,0.2679433656340733,576,64,18,0.015625,0.01388888888888889,332929,4096,324,2401,1944,3.430876558141103,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,estimated_dof_cap,Above adaptive run cap N=80000.

@@ -105,6 +105,37 @@ for q = {q1, q2}
 end
 fprintf('PASSED\n');
 
+%% ---- Test 7: Variable wave-number input --------------------------------
+fprintf('Test 7: Scalar/PDE consistency and variable k(x,y) support ... ');
+baseOpts = struct('coarseType', 'p1', 'solverMode', 'lu', ...
+    'variant', 'dirichlet', 'adjointType', 'energy');
+pdeConst = helmholtzPDE(k, 'source', 0, 'boundaryData', 0);
+qScalar = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, k, ...
+    parts, nodeH, elemH, bdH, baseOpts);
+qPDE = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, pdeConst, ...
+    parts, nodeH, elemH, bdH, baseOpts);
+relA = norm(qScalar.A - qPDE.A, 'fro') / max(1, norm(qScalar.A, 'fro'));
+relD = norm(qScalar.energy - qPDE.energy, 'fro') / max(1, norm(qScalar.energy, 'fro'));
+relAH = norm(qScalar.basis.AH - qPDE.basis.AH, 'fro') / max(1, norm(qScalar.basis.AH, 'fro'));
+r = randn(size(node, 1), 1) + 1i * randn(size(node, 1), 1);
+relApply = norm(qScalar.applyResidual(r) - qPDE.applyResidual(r)) / ...
+    max(1, norm(qScalar.applyResidual(r)));
+assert(relA < 1e-12 && relD < 1e-12 && relAH < 1e-12 && relApply < 1e-10, ...
+    'Constant Helmholtz PDE struct did not reproduce scalar two-level wrapper.');
+
+kfun = @(x,y) k + x + 0.25 * y;
+pdeVar = helmholtzPDE(kfun, 'source', 0, 'boundaryData', 0);
+varOpts = struct('coarseType', 'lod', 'lodOptions', lodOpts, ...
+    'solverMode', 'direct', 'variant', 'dirichlet', 'adjointType', 'energy');
+qVar = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, pdeVar, ...
+    parts, nodeH, elemH, bdH, varOpts);
+zVar = qVar.applyResidual(r);
+assert(all(isfinite(nonzeros(qVar.A))) && all(isfinite(zVar)), ...
+    'Variable-k two-level wrapper produced non-finite entries.');
+assert(norm(qVar.A - qScalar.A, 'fro') > 1e-8, ...
+    'Variable-k two-level matrix unexpectedly equals the scalar-k matrix.');
+fprintf('PASSED  (relA %.2e, variable nnz %d)\n', relA, nnz(qVar.A));
+
 fprintf('\n========== LXZZ25 hybrid smoke tests PASSED ==========\n');
 
 

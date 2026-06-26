@@ -7,14 +7,27 @@ opts = localOptions(opts);
 fine = setupFineSpace(node, elem, bdFlag, k, opts);
 A = fine.A;
 D = fine.energy;
-Dsolve = energySolver(D);
 
 coarseTimer = tic;
 [coarse, lodInfo] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts);
 coarseSetupTime = toc(coarseTimer);
 
+energyAdjointTrial = [];
+Dsolve = [];
+if strcmpi(opts.adjointType, 'energy')
+    if isfield(coarse, 'energyAdjointTrial') && ...
+            ~isempty(coarse.energyAdjointTrial)
+        energyAdjointTrial = coarse.energyAdjointTrial;
+    elseif isfield(fine, 'energySolve') && ...
+            isa(fine.energySolve, 'function_handle')
+        Dsolve = fine.energySolve;
+    else
+        Dsolve = energySolver(D);
+    end
+end
+
 localTimer = tic;
-[local, variant] = setupLocalSolver(fine, k, parts, opts);
+[local, variant] = setupLocalSolver(fine, fine.helmholtzInput, parts, opts);
 localSetupTime = toc(localTimer);
 
     function y = applyM0Inverse(r)
@@ -36,7 +49,12 @@ localSetupTime = toc(localTimer);
     function y = applyQ0Adjoint(v)
         switch lower(opts.adjointType)
             case 'energy'
-                y = Dsolve(applyQ0EuclideanAdjoint(D * v));
+                if isempty(energyAdjointTrial)
+                    y = Dsolve(applyQ0EuclideanAdjoint(D * v));
+                else
+                    y = energyAdjointTrial * coarse.solveAdjoint( ...
+                        coarse.trial' * (D * v));
+                end
             case {'euclidean', 'reference', 'paper'}
                 y = applyQ0PaperAdjoint(v);
             case {'matrix', 'q0h'}
@@ -50,7 +68,12 @@ localSetupTime = toc(localTimer);
     function y = applyEnergyAdjointIMinusQ0(v)
         switch lower(opts.adjointType)
             case 'energy'
-                y = Dsolve(D * v - applyQ0EuclideanAdjoint(D * v));
+                if isempty(energyAdjointTrial)
+                    y = Dsolve(D * v - applyQ0EuclideanAdjoint(D * v));
+                else
+                    y = v - energyAdjointTrial * coarse.solveAdjoint( ...
+                        coarse.trial' * (D * v));
+                end
             case {'euclidean', 'reference', 'paper'}
                 y = v - applyQ0PaperAdjoint(v);
             case {'matrix', 'q0h'}
@@ -145,6 +168,12 @@ if ~isempty(opts.fineSpace)
                 'Injected fineSpace needs p1ToFine for default P1 coarse builders.');
         end
     end
+    if ~isfield(fine, 'pde') || isempty(fine.pde)
+        fine.pde = normalizeHelmholtzPDE(k);
+    end
+    if ~isfield(fine, 'helmholtzInput') || isempty(fine.helmholtzInput)
+        fine.helmholtzInput = helmholtzMatrixInput(fine.pde);
+    end
     return;
 end
 
@@ -172,6 +201,16 @@ end
 K = assembleStiffness2D(fineNode, fineElem, degree);
 M = assembleMass2D(fineNode, fineElem, degree);
 Mb = assembleBoundaryMass2D(fineNode, fineElem, bdFlag, degree);
+helmholtzInput = helmholtzMatrixInput(k);
+if isScalarWaveNumber(helmholtzInput)
+    A = K - (helmholtzInput^2) * M - 1i * helmholtzInput * Mb;
+    energy = K + (helmholtzInput^2) * M;
+else
+    pde = normalizeHelmholtzPDE(helmholtzInput);
+    A = assembleHelmholtz2D(fineNode, fineElem, bdFlag, pde, [], [], degree);
+    qfun = @(x,y) helmholtzEnergyCoefficient(pde, x, y, []);
+    energy = K + assembleWeightedMass2D(fineNode, fineElem, degree, qfun);
+end
 
 fine = struct();
 fine.degree = degree;
@@ -184,14 +223,16 @@ fine.baseBdFlag = bdFlag;
 fine.K = K;
 fine.M = M;
 fine.boundaryMass = Mb;
-fine.A = K - (k^2) * M - 1i * k * Mb;
-fine.energy = K + (k^2) * M;
+fine.A = A;
+fine.energy = energy;
+fine.pde = normalizeHelmholtzPDE(k);
+fine.helmholtzInput = helmholtzInput;
 fine.p1ToFine = p1ToFine;
 fine.N = size(fineNode, 1);
 end
 
 
-function [coarse, info] = setupCoarseSpace(fine, k, nodeH, elemH, bdH, opts)
+function [coarse, info] = setupCoarseSpace(fine, ~, nodeH, elemH, bdH, opts)
 if ~isempty(opts.coarseSpace)
     coarse = normalizeCoarseSpace(opts.coarseSpace, fine);
     info = coarse.info;
@@ -206,7 +247,7 @@ switch lower(opts.coarseType)
             lodOpts = opts.lodOptions;
             lodOpts.solveCoarse = false;
             lod = buildLODHelmholtz2D(nodeH, elemH, bdH, fine.baseNode, ...
-                fine.baseElem, fine.baseBdFlag, k, 0, 0, lodOpts);
+                fine.baseElem, fine.baseBdFlag, fine.helmholtzInput, 0, 0, lodOpts);
         end
         coarse = normalizeCoarseSpace(struct('nativeTrial', lod.basis.trial, ...
             'nativeTest', lod.basis.test, 'embedding', fine.p1ToFine, ...
@@ -284,6 +325,16 @@ coarse.nativeTrial = nativeTrial;
 coarse.nativeTest = nativeTest;
 coarse.embedding = embedding;
 coarse.AH = AH;
+if isfield(raw, 'energyAdjointTrial') && ~isempty(raw.energyAdjointTrial)
+    if size(raw.energyAdjointTrial, 1) ~= fine.N || ...
+            size(raw.energyAdjointTrial, 2) ~= size(test, 2)
+        error('twoLevelHybridSchwarzHelmholtz2D:coarseSpace', ...
+            'energyAdjointTrial must have size fine.N-by-coarseDimension.');
+    end
+    coarse.energyAdjointTrial = raw.energyAdjointTrial;
+else
+    coarse.energyAdjointTrial = [];
+end
 if isfield(raw, 'solve') && isa(raw.solve, 'function_handle')
     coarse.solve = raw.solve;
 else
@@ -295,7 +346,8 @@ else
     coarse.solveAdjoint = @(r) AH' \ r;
 end
 coarse.info = rmfieldIfPresent(raw, {'trial', 'test', 'nativeTrial', ...
-    'nativeTest', 'embedding', 'E', 'AH', 'solve', 'solveAdjoint'});
+    'nativeTest', 'embedding', 'E', 'AH', 'solve', 'solveAdjoint', ...
+    'energyAdjointTrial'});
 if ~isfield(coarse.info, 'description')
     coarse.info.description = 'abstract coarse space';
 end
@@ -514,10 +566,7 @@ localElem = g2l(fine.elem(eIdx, :));
 localNode = fine.node(allIdx, :);
 localBdFlag = fine.bdFlag(eIdx, :);
 freeLocal = g2l(idx);
-Kloc = assembleStiffness2D(localNode, localElem, fine.degree);
-Mloc = assembleMass2D(localNode, localElem, fine.degree);
-Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, fine.degree);
-Aloc = Kloc - (k^2) * Mloc - 1i * k * Mbloc;
+Aloc = assembleLocalHelmholtzMatrix(localNode, localElem, localBdFlag, fine.degree, k);
 solver = factorLocalMatrix(Aloc(freeLocal, freeLocal), solverMode);
 end
 
@@ -583,13 +632,52 @@ localNode = fine.node(idx, :);
 localElem = g2l(fine.elem(eIdx, :));
 localBdFlag = localBoundaryFlags(localElem);
 
-Kloc = assembleStiffness2D(localNode, localElem, fine.degree);
-Mloc = assembleMass2D(localNode, localElem, fine.degree);
-Mbloc = assembleBoundaryMass2D(localNode, localElem, localBdFlag, fine.degree);
-Cloc = Kloc + (k^2) * Mloc - 1i * k * Mbloc;
+Cloc = assembleCoerciveLocalMatrix(localNode, localElem, localBdFlag, fine.degree, k);
 solver = factorLocalMatrix(Cloc, solverMode);
 w = localWeights(fine.node, parts, s, idx, nodeWeight);
 extension = sparse(idx, 1:numel(idx), w, fine.N, numel(idx));
+end
+
+
+function input = helmholtzMatrixInput(k)
+if isScalarWaveNumber(k)
+    input = k;
+else
+    input = normalizeHelmholtzPDE(k);
+end
+end
+
+
+function tf = isScalarWaveNumber(k)
+tf = isnumeric(k) && isscalar(k);
+end
+
+
+function A = assembleLocalHelmholtzMatrix(node, elem, bdFlag, degree, k)
+if isScalarWaveNumber(k)
+    K = assembleStiffness2D(node, elem, degree);
+    M = assembleMass2D(node, elem, degree);
+    Mb = assembleBoundaryMass2D(node, elem, bdFlag, degree);
+    A = K - (k^2) * M - 1i * k * Mb;
+else
+    A = assembleHelmholtz2D(node, elem, bdFlag, normalizeHelmholtzPDE(k), [], [], degree);
+end
+end
+
+
+function C = assembleCoerciveLocalMatrix(node, elem, bdFlag, degree, k)
+K = assembleStiffness2D(node, elem, degree);
+if isScalarWaveNumber(k)
+    M = assembleMass2D(node, elem, degree);
+    Mb = assembleBoundaryMass2D(node, elem, bdFlag, degree);
+    C = K + (k^2) * M - 1i * k * Mb;
+else
+    pde = normalizeHelmholtzPDE(k);
+    qfun = @(x,y) helmholtzEnergyCoefficient(pde, x, y, []);
+    etafun = @(x,y) helmholtzBoundaryCoefficient(pde, x, y, []);
+    C = K + assembleWeightedMass2D(node, elem, degree, qfun) ...
+        - 1i * assembleWeightedBoundaryMass2D(node, elem, bdFlag, degree, etafun);
+end
 end
 
 
