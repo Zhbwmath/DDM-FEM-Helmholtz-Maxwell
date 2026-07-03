@@ -1,0 +1,3 @@
+k,variant,degree,fineHInv,localHInv,oversampling,ndof,nSubdomains,ncoarse,supportSteps,localDofEstimate,estimateGB,coarseDimension,cipNonzeros,localMode,localDofMin,localDofMax,localDofMean,gmresIterations,flag,finalRelres,resvecLength,identityError,setupS,solveS,totalS,status,notes
+16,dirichlet,1,64,16,3,4225,289,289,8,81,0.01623752818174443,289,45751,matrix-lu,10,37,33.55363321799308,10,0,2.899460728687564e-07,11,1.28815530644963e-15,6.8918105,0.9464204000000001,7.8382309,ran,
+16,impedance,1,64,8,3,4225,81,289,16,289,0.01623752818174443,289,45751,matrix-lu,45,217,174.8271604938272,8,0,4.916584006943671e-07,9,1.072080748277021e-15,5.3481396,0.8333808,6.1815204,ran,

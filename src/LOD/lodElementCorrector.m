@@ -3,8 +3,9 @@ function [corr, corrStar, stats] = lodElementCorrector(T, elemH, problem, opts, 
 
 timer = tic;
 targetDof = unique(elemH(T, :));
-local2global = patch.local2global{T};
-freeLocal = patch.freeLocalDof{T};
+sub = lodGetPatchSubmesh(patch, T);
+local2global = sub.local2global;
+freeLocal = sub.freeLocalDof;
 freeGlobal = local2global(freeLocal);
 
 Apatch = problem.form.patch(patch, T);

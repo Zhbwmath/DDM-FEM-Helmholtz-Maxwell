@@ -2,10 +2,10 @@ function sub = lodSubmesh3D(node, elem, bdFlag, elemIds)
 % LODSUBMESH3D  Build local tetrahedral patch mesh and boundary DOF sets.
 
 local2global = unique(elem(elemIds, :));
-global2local = zeros(size(node, 1), 1);
-global2local(local2global) = 1:numel(local2global);
-
-localElem = global2local(elem(elemIds, :));
+[isLocal, localElem] = ismember(elem(elemIds, :), local2global);
+if any(~isLocal(:))
+    error('lodSubmesh3D:localMap', 'Patch element contains an unmapped node.');
+end
 localNode = node(local2global, :);
 localBdFlag = bdFlag(elemIds, :);
 

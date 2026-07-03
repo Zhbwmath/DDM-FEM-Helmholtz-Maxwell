@@ -19,8 +19,9 @@ problem.form.elementRhsAdjoint = @elementRhsAdjoint;
     end
 
     function A = patchForm(patch, T)
-        A = assembleHelmholtz3D(patch.localNode{T}, patch.localElem{T}, ...
-            patch.localBdFlag{T}, k, [], [], 1);
+        sub = lodGetPatchSubmesh(patch, T);
+        A = assembleHelmholtz3D(sub.localNode, sub.localElem, ...
+            sub.localBdFlag, k, [], [], 1);
     end
 
     function R = elementRhs(Tcoarse, targetDof, patch, Tpatch, P)
@@ -33,14 +34,15 @@ problem.form.elementRhsAdjoint = @elementRhsAdjoint;
 
     function R = localElementRhs(Tcoarse, targetDof, patch, Tpatch, P, adjoint)
         fineIds = patch.targetFineElemIds{Tcoarse};
-        local2global = patch.local2global{Tpatch};
+        sub = lodGetPatchSubmesh(patch, Tpatch);
+        local2global = sub.local2global;
         [isInPatch, localElem] = ismember(elemh(fineIds, :), local2global);
         if any(~isInPatch(:))
             error('helmholtzLODProblem3D:patchMap', ...
                 'Target fine element is not contained in its patch.');
         end
 
-        Aelem = assembleHelmholtz3D(patch.localNode{Tpatch}, localElem, ...
+        Aelem = assembleHelmholtz3D(sub.localNode, localElem, ...
             bdh(fineIds, :), k, [], [], 1);
         V = P(local2global, targetDof);
         if adjoint

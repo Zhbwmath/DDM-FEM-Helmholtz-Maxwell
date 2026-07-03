@@ -8,22 +8,31 @@ bdNodes = getBoundaryNodes2D(elem, bdFlag);
 nSub = size(nodeP, 1);
 parts = repmat(emptyPart(), nSub, 1);
 tol = 1e-12;
+[pNode, pCol, pVal] = find(P);
+colCounts = accumarray(pCol, 1, [nSub, 1]);
+colStart = [1; cumsum(colCounts) + 1];
+[nodeElemStart, nodeElemList] = nodeElementMap(elem, size(node, 1));
 
 for s = 1:nSub
-    wNode = full(P(:, s));
-    elemMask = any(wNode(elem) > tol, 2);
-    eIdx = find(elemMask);
+    r = colStart(s):(colStart(s + 1) - 1);
+    activeNode = pNode(r);
+    activeWeight = pVal(r);
+    activeNode = activeNode(activeWeight > tol);
+    activeWeight = activeWeight(activeWeight > tol);
+    eIdx = elementsFromNodes(activeNode, nodeElemStart, nodeElemList);
     if isempty(eIdx)
         continue;
     end
 
     nodeIdx = unique(elem(eIdx, :));
-    g2l = zeros(size(node, 1), 1);
-    g2l(nodeIdx) = (1:numel(nodeIdx))';
-    localElem = g2l(elem(eIdx, :));
+    [~, localElem] = ismember(elem(eIdx, :), nodeIdx);
+    g2l = sparse(nodeIdx, 1, (1:numel(nodeIdx))', size(node, 1), 1);
 
+    wLocal = zeros(numel(nodeIdx), 1);
+    [isActive, activeLoc] = ismember(nodeIdx, activeNode);
+    wLocal(isActive) = activeWeight(activeLoc(isActive));
     physicalLocal = find(ismember(nodeIdx, bdNodes));
-    freeByWeight = find(wNode(nodeIdx) > tol);
+    freeByWeight = find(wLocal > tol);
     freeLocal = unique([freeByWeight(:); physicalLocal(:)]);
     boundaryLocal = setdiff((1:numel(nodeIdx))', freeLocal);
 
@@ -36,6 +45,7 @@ for s = 1:nSub
     parts(s).freeIdx = freeLocal(:);
     parts(s).interiorNodeIdx = nodeIdx(freeLocal);
     parts(s).boundaryNodeIdx = nodeIdx(boundaryLocal);
+    parts(s).rawWeight = wLocal(:);
     parts(s).weightFun = @(x,y) evalHat(nodeP, elemP, s, x, y);
 end
 end
@@ -44,7 +54,38 @@ end
 function part = emptyPart()
 part = struct('elemIdx', [], 'nodeIdx', [], 'localNode', [], 'localElem', [], ...
     'global2local', [], 'bdIdx', [], 'freeIdx', [], 'interiorNodeIdx', [], ...
-    'boundaryNodeIdx', [], 'weightFun', []);
+    'boundaryNodeIdx', [], 'rawWeight', [], 'weightFun', []);
+end
+
+
+function [nodeElemStart, nodeElemList] = nodeElementMap(elem, nNode)
+nElem = size(elem, 1);
+nodeId = elem(:);
+elemId = repmat((1:nElem)', size(elem, 2), 1);
+[nodeId, order] = sort(nodeId);
+elemId = elemId(order);
+counts = accumarray(nodeId, 1, [nNode, 1]);
+nodeElemStart = [1; cumsum(counts) + 1];
+nodeElemList = elemId;
+end
+
+
+function eIdx = elementsFromNodes(nodeIdx, nodeElemStart, nodeElemList)
+if isempty(nodeIdx)
+    eIdx = zeros(0, 1);
+    return;
+end
+counts = nodeElemStart(nodeIdx + 1) - nodeElemStart(nodeIdx);
+hits = zeros(sum(counts), 1);
+pos = 0;
+for i = 1:numel(nodeIdx)
+    first = nodeElemStart(nodeIdx(i));
+    last = nodeElemStart(nodeIdx(i) + 1) - 1;
+    n = last - first + 1;
+    hits(pos + (1:n)) = nodeElemList(first:last);
+    pos = pos + n;
+end
+eIdx = unique(hits);
 end
 
 

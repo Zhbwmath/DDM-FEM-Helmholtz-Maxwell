@@ -1,0 +1,2 @@
+k,variant,degree,fineHInv,localHInv,oversampling,ndof,nSubdomains,ncoarse,supportSteps,localDofEstimate,estimateGB,coarseDimension,cipNonzeros,localMode,localDofMin,localDofMax,localDofMean,gmresIterations,flag,finalRelres,resvecLength,identityError,setupS,solveS,totalS,status,notes
+128,dirichlet,1,1536,128,2,2362369,16641,16641,24,625,7.538957242821156,NaN,NaN,,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,failed,MATLAB:iterapp:InvalidInput: User supplied function failed.

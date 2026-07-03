@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-06-07
+Updated: 2026-06-26
 
 ## MATLAB Execution
 
@@ -15,6 +15,7 @@ Updated: 2026-06-07
 ## HPC Rules (Workstation: 48 cores, 549 GB RAM)
 
 - **Ask permission before any test estimated to use >200 GB memory.** Estimate memory usage and present it before running.
+- **Force-run override:** when the user explicitly says `force-run` for a named MATLAB verification or experiment, treat that phrase as explicit approval to bypass this repo's memory-permission gate and runtime queue gate for that named run. Still print or record the memory estimate and exact run target, keep checkpointing/resume behavior when the driver supports it, and do not reinterpret `force-run` as permission to change unrelated code, license files, credentials, or unrelated experiment rows. Driver-specific flags should use `*_FORCE_RUN=1`; for `verify/verify_cip_lxzz_lod_medium.m`, use `CIP_LXZZ_LOD_FORCE_RUN=1`.
 - **Use `parfor` for subdomain setup.** Start parpool before large runs: `parpool('local', feature('numcores'))`.
 - **Vectorize all assembly.** Use iFEM-style one-shot `sparse(ii, jj, ss, N, N)`.
 - **Memory estimation rule of thumb** for 2D Helmholtz with `N` nodes, `NT` elements, `nSub` subdomains, and GMRES restart/basis length `m`:
@@ -74,6 +75,7 @@ These rules adapt the coding principles in `Karpathy's CLAUDE.md` to this FEM/DD
 - If a paper, existing code path, or user instruction is ambiguous, ask before coding. Do not fill gaps with plausible numerical-analysis folklore.
 - Surface important tradeoffs early: paper fidelity vs. memory, direct LU vs. iterative solve, exact table parameters vs. scaled verification.
 - For DDM work, clarify the geometry and interface conditions before writing partition or solver code.
+- For new Helmholtz/Maxwell or multiscale solver implementations, ask whether the solver should support scalar-only coefficients or also variable coefficients before fixing the API. In particular, clarify whether to accept variable wave number $k(x)$ and whether multiscale forms should support divergence-form operators such as $-\nabla\cdot(A(x)\nabla u)$.
 
 ### Simplicity First
 
@@ -151,6 +153,7 @@ Use this workflow whenever the user asks to **reproduce**, **replicate**, or **m
 
 - **Include user document edits when committing** — If the user has modified Markdown, task notes, reports, or project-rule documents related to the current phase, include those document changes in the commit and follow the updated rules without asking again.
 - **Double-check user code edits before committing** — If the user has modified source or verification code during the phase, inspect the diff and ask only when the intent is unclear, the code conflicts with the current implementation, or committing it would mix unrelated work.
+- **Commit inspected user worktree changes when explicitly requested** — If the user asks to commit or push the user's worktree changes, inspect the modified and untracked files, then stage the user-authored worktree changes together with any required project-rule update. Exclude only files that clearly violate repository policy or safety rules, such as credentials, machine-local secrets, generated bulk artifacts, or disallowed copyrighted source documents; if anything is excluded, state the reason explicitly. Verify the staged set by name before committing, and avoid broad `git add .` unless the user has requested a full-tree closeout and the staged list has been checked.
 
 - **Commit when a phase is complete and verified** — After writing a component and its verification passes, commit immediately. Don't batch unrelated changes.
 - **Document genuine bugs in commit messages** — When a non-obvious bug was encountered and fixed during development, describe it in the commit body:
@@ -167,7 +170,8 @@ Use this workflow whenever the user asks to **reproduce**, **replicate**, or **m
     Fix: set gSign(:, 7:8) = 1 after the edge-DOF loop.
     ```
 - **Do NOT commit** half-finished work or code that hasn't been verified.
-- **Do not commit**  paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
+- **Do NOT commit**  paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
+- **Do NOT commit** API keys, or any other personal sensitive informaation.
 
 ## File Organization
 
@@ -231,6 +235,40 @@ M^{-1} = Σ_i R_i^T A_i^{-1} R_i
 - Flux from neighbor
 - ρ independent of h, degrades as H→0: ρ→1 without coarse space
 
+### Hybrid Two-Level DDM
+
+In this repo, **hybrid two-level** means the twice-hybrid LXZZ framework unless
+the user explicitly says otherwise. The abstract fine/coarse setup is:
+
+$$
+A_0=(P_0^\ast)^HAP_0,\qquad
+M_0^{-1}=P_0A_0^{-1}(P_0^\ast)^H,\qquad
+Q_0=M_0^{-1}A,
+$$
+
+where $P_0$ is the coarse-to-fine trial injection and $P_0^\ast$ is the test
+injection. For a one-level local solver $M_{\rm loc}^{-1}$, the LXZZ
+function-level twice-hybrid operator is
+
+$$
+Q_m=Q_0+(I-Q_0)^{T_D}M_{\rm loc}^{-1}A(I-Q_0),
+$$
+
+with $T_D$ denoting the adjoint in the $D_\kappa$ energy inner product. The
+equivalent left-preconditioner for residual GMRES is
+
+$$
+B^{-1}=M_0^{-1}+(I-Q_0)^{T_D}M_{\rm loc}^{-1}(I-AM_0^{-1}).
+$$
+
+Use this twice-hybrid form whenever the user says `hybrid two-level`,
+`LXZZ-type`, or asks to inject a coarse space into LXZZ preconditioners. Use a
+one-sided hybrid only when the user explicitly asks for the native Hu--Li
+method or another native one-sided method. The names `native Hu--Li coarse
+space`, `Hu--Li coarse space`, and `Helmholtz-harmonic coarse space` refer to
+the spectral/economic Helmholtz-harmonic coarse spaces constructed as in
+Hu--Li; they do not by themselves change the LXZZ twice-hybrid algebra.
+
 ## DDM Verification Commands
 
 Stable DDM result summaries and ORAS/Helmholtz reproduction notes live in:
@@ -242,13 +280,13 @@ Stable DDM result summaries and ORAS/Helmholtz reproduction notes live in:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **DDM-FEM-Helmholtz-Maxwell** (522 symbols, 513 relationships, 0 execution flows as of 2026-06-05). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **DDM-FEM-Helmholtz-Maxwell**. Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, refresh the snapshot before relying on graph results. On this Windows/Codex workstation, do **not** assume `npx`, `node` on `PATH`, or `gitnexus.cmd` works: `npx` may be absent, and `node` on `PATH` can resolve to the Codex WindowsApps executable and fail with `Access is denied`.
->
+
 > Use the verified direct invocation from the repo root:
 > `C:\Users\Administrator\Documents\Codex\tools\node-v24.14.0-win-x64\node.exe C:\Users\Administrator\Documents\Codex\tools\gitnexus-cli-npm\node_modules\gitnexus\dist\cli\index.js analyze --index-only .`
->
+
 > If the refresh fails with `EPERM` on `C:\Users\Administrator\.gitnexus\registry.json`, rerun the same direct invocation with the required filesystem approval because GitNexus must update its global registry outside the workspace. The local Codex hook path config should live at `C:\Users\Administrator\.codex\hooks\.local\gitnexus.paths.ps1` and point to the same Node and GitNexus CLI files.
 
 ## Always Do

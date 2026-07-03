@@ -6,8 +6,9 @@ if ~isfield(opts, 'constraintTolerance') || isempty(opts.constraintTolerance)
     opts.constraintTolerance = 1e-12;
 end
 
-local2global = patch.local2global{T};
-freeLocal = patch.freeLocalDof{T};
+sub = lodGetPatchSubmesh(patch, T);
+local2global = sub.local2global;
+freeLocal = sub.freeLocalDof;
 freeGlobal = local2global(freeLocal);
 
 Qloc = Q(:, freeGlobal);

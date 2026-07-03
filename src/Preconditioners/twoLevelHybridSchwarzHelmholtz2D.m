@@ -193,9 +193,18 @@ elseif degree == 2
         fineElem = elem;
     end
     p1ToFine = prolongate_P1_P2(baseNode, baseElem);
+elseif degree == 3
+    baseNode = node(1:max(baseElem(:)), :);
+    if size(elem, 2) == 3
+        [fineNode, fineElem] = extendMesh2D(baseNode, baseElem, 3);
+    else
+        fineNode = node;
+        fineElem = elem;
+    end
+    p1ToFine = prolongate_P1_P3(baseNode, baseElem);
 else
     error('twoLevelHybridSchwarzHelmholtz2D:degree', ...
-        'Only degree 1 and 2 are supported by the LXZZ wrapper.');
+        'Only degree 1, 2, and 3 are supported by the LXZZ wrapper.');
 end
 
 K = assembleStiffness2D(fineNode, fineElem, degree);
@@ -213,6 +222,8 @@ else
 end
 
 fine = struct();
+fine.dim = 2;
+fine.form = 'standard';
 fine.degree = degree;
 fine.node = fineNode;
 fine.elem = fineElem;
@@ -228,6 +239,7 @@ fine.energy = energy;
 fine.pde = normalizeHelmholtzPDE(k);
 fine.helmholtzInput = helmholtzInput;
 fine.p1ToFine = p1ToFine;
+fine.baseToFine = p1ToFine;
 fine.N = size(fineNode, 1);
 end
 
@@ -408,13 +420,16 @@ if ~isempty(opts.localSolver)
     return;
 end
 
-solverMeta = chooseLocalSolverMode(fine, parts, opts.variant, opts);
+solverInfo = chooseLocalSolverMode(fine, parts, opts.variant, opts);
+solverMode = solverInfo.effective;
 switch lower(opts.variant)
     case {'q1', 'dirichlet'}
-        local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
+        local = setupDirichletLocalSolvers(fine, k, parts, ...
+            solverMode, solverInfo, opts.useParfor);
         variant = 'dirichlet';
     case {'q2', 'impedance'}
-        local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, opts.useParfor);
+        local = setupImpedanceLocalSolvers(fine, k, parts, ...
+            solverMode, solverInfo, opts.useParfor);
         variant = 'impedance';
     otherwise
         error('twoLevelHybridSchwarzHelmholtz2D:variant', ...
@@ -451,8 +466,17 @@ end
 if isfield(raw, 'extensions')
     exts = raw.extensions;
     if ~iscell(exts), exts = {exts}; end
-    local.info.extensionNonzeros = sum(cellfun(@nnz, exts));
+    local.info.extensionNonzeros = sum(cellfun(@extensionNnz, exts));
     local.info.nSubdomains = numel(exts);
+end
+end
+
+
+function n = extensionNnz(ext)
+if isstruct(ext) && isfield(ext, 'idx')
+    n = numel(ext.idx);
+else
+    n = nnz(ext);
 end
 end
 
@@ -489,7 +513,8 @@ x(q, :) = U \ (L \ b(p, :));
 end
 
 
-function local = setupDirichletLocalSolvers(fine, k, parts, solverMeta, useParfor)
+function local = setupDirichletLocalSolvers(fine, k, parts, solverMode, ...
+    solverInfo, useParfor)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
@@ -501,12 +526,12 @@ localMatrices = cell(nSub, 1);
 if useParfor
     parfor s = 1:nSub
         [solvers{s}, gIdx{s}, extensions{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
-            setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
+            setupOneDirichlet(fine, k, parts(s), solverMode);
     end
 else
     for s = 1:nSub
         [solvers{s}, gIdx{s}, extensions{s}, localAll{s}, localFree{s}, localMatrices{s}] = ...
-            setupOneDirichlet(fine, k, parts(s), solverMeta.effective);
+            setupOneDirichlet(fine, k, parts(s), solverMode);
     end
 end
 
@@ -530,7 +555,7 @@ end
 local.apply = @applyLocal;
 local.applyInverse = @applyInverse;
 local.extensions = extensions;
-local.info = localStats(gIdx, 'Dirichlet artificial boundary', solverMeta);
+local.info = localStats(gIdx, 'Dirichlet artificial boundary', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
 end
 
@@ -582,7 +607,8 @@ idx = candidateIdx(w(:) > tol);
 end
 
 
-function local = setupImpedanceLocalSolvers(fine, k, parts, solverMeta, useParfor)
+function local = setupImpedanceLocalSolvers(fine, k, parts, solverMode, ...
+    solverInfo, useParfor)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
@@ -592,12 +618,12 @@ nodeWeight = accumulatedDofWeights(fine, parts);
 if useParfor
     parfor s = 1:nSub
         [solvers{s}, gIdx{s}, extensions{s}] = ...
-            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
+            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMode);
     end
 else
     for s = 1:nSub
         [solvers{s}, gIdx{s}, extensions{s}] = ...
-            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMeta.effective);
+            setupOneImpedance(fine, k, parts, s, nodeWeight, solverMode);
     end
 end
 
@@ -612,7 +638,7 @@ end
 local.apply = @applyLocal;
 local.applyInverse = @applyLocal;
 local.extensions = extensions;
-local.info = localStats(gIdx, 'coercive impedance local form', solverMeta);
+local.info = localStats(gIdx, 'coercive impedance local form', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
 end
 
@@ -752,7 +778,7 @@ end
 end
 
 
-function info = localStats(gIdx, boundaryCondition, solverMeta)
+function info = localStats(gIdx, boundaryCondition, solverInfo)
 sizes = cellfun(@numel, gIdx);
 info = struct();
 info.boundaryCondition = boundaryCondition;
@@ -761,9 +787,9 @@ info.localDofMin = min(sizes);
 info.localDofMax = max(sizes);
 info.localDofMean = mean(sizes);
 info.localDofMedian = median(sizes);
-info.solverModeRequested = solverMeta.requested;
-info.solverModeEffective = solverMeta.effective;
-info.estimatedStoredLuGB = solverMeta.estimatedStoredLuGB;
-info.storedLuLimitGB = solverMeta.storedLuLimitGB;
-info.luFillConstant = solverMeta.luFillConstant;
+info.solverModeRequested = solverInfo.requested;
+info.solverModeEffective = solverInfo.effective;
+info.estimatedStoredLuGB = solverInfo.estimatedStoredLuGB;
+info.storedLuLimitGB = solverInfo.storedLuLimitGB;
+info.luFillConstant = solverInfo.luFillConstant;
 end

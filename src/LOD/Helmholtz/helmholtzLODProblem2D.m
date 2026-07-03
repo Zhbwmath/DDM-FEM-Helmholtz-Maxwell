@@ -1,8 +1,9 @@
-function problem = helmholtzLODProblem2D(nodeH, elemH, bdH, nodeh, elemh, bdh, k, f, g)
+function problem = helmholtzLODProblem2D(nodeH, elemH, ~, nodeh, elemh, bdh, k, f, g)
 % HELMHOLTZLODPROBLEM2D  Matrix-callback data for Helmholtz LOD.
 
 if nargin < 8, f = []; end
 if nargin < 9, g = []; end
+kInput = helmholtzLODInput(k);
 
 problem = struct();
 problem.bdFlagFine = bdh;
@@ -15,12 +16,13 @@ problem.form.elementRhs = @elementRhs;
 problem.form.elementRhsAdjoint = @elementRhsAdjoint;
 
     function [A, b] = globalForm()
-        [A, b] = assembleHelmholtz2D(nodeh, elemh, bdh, k, f, g, 1);
+        [A, b] = assembleHelmholtz2D(nodeh, elemh, bdh, kInput, f, g, 1);
     end
 
     function A = patchForm(patch, T)
-        A = assembleHelmholtz2D(patch.localNode{T}, patch.localElem{T}, ...
-            patch.localBdFlag{T}, k, [], [], 1);
+        sub = lodGetPatchSubmesh(patch, T);
+        A = assembleHelmholtz2D(sub.localNode, sub.localElem, ...
+            sub.localBdFlag, kInput, [], [], 1);
     end
 
     function R = elementRhs(Tcoarse, targetDof, patch, Tpatch, P)
@@ -33,15 +35,16 @@ problem.form.elementRhsAdjoint = @elementRhsAdjoint;
 
     function R = localElementRhs(Tcoarse, targetDof, patch, Tpatch, P, adjoint)
         fineIds = patch.targetFineElemIds{Tcoarse};
-        local2global = patch.local2global{Tpatch};
+        sub = lodGetPatchSubmesh(patch, Tpatch);
+        local2global = sub.local2global;
         [isInPatch, localElem] = ismember(elemh(fineIds, :), local2global);
         if any(~isInPatch(:))
             error('helmholtzLODProblem2D:patchMap', ...
                 'Target fine element is not contained in its patch.');
         end
 
-        Aelem = assembleHelmholtz2D(patch.localNode{Tpatch}, localElem, ...
-            bdh(fineIds, :), k, [], [], 1);
+        Aelem = assembleHelmholtz2D(sub.localNode, localElem, ...
+            bdh(fineIds, :), kInput, [], [], 1);
         V = P(local2global, targetDof);
         if adjoint
             R = Aelem' * V;
@@ -49,4 +52,13 @@ problem.form.elementRhsAdjoint = @elementRhsAdjoint;
             R = Aelem * V;
         end
     end
+end
+
+
+function input = helmholtzLODInput(k)
+if isnumeric(k) && isscalar(k)
+    input = k;
+else
+    input = normalizeHelmholtzPDE(k);
+end
 end

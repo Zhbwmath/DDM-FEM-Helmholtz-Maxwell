@@ -17,33 +17,33 @@ else
 end
 
 [A, b] = problem.form.global();
-patch = lodBuildPatches(nodeH, elemH, nodeh, elemh, problem.bdFlagFine, opts.oversampling);
+patchOpts = struct('storeSubmeshes', opts.storePatchSubmeshes);
+patch = lodBuildPatches(nodeH, elemH, nodeh, elemh, problem.bdFlagFine, ...
+    opts.oversampling, patchOpts);
 
 Nf = size(nodeh, 1);
 Nc = size(nodeH, 1);
 NT = size(elemH, 1);
-corrCell = cell(NT, 1);
-corrStarCell = cell(NT, 1);
+corrData = cell(NT, 1);
+corrStarData = cell(NT, 1);
 stats = repmat(lodEmptyStats(), NT, 1);
 
 if opts.useParfor
     parfor T = 1:NT
-        [corrCell{T}, corrStarCell{T}, stats(T)] = ...
-            lodElementCorrector(T, elemH, problem, opts, P, Q, patch, Nf, Nc);
+        [corrData{T}, corrStarData{T}, stats(T)] = ...
+            lodElementCorrectorTriplets(T, elemH, problem, opts, P, Q, patch);
     end
 else
     for T = 1:NT
-        [corrCell{T}, corrStarCell{T}, stats(T)] = ...
-            lodElementCorrector(T, elemH, problem, opts, P, Q, patch, Nf, Nc);
+        [corrData{T}, corrStarData{T}, stats(T)] = ...
+            lodElementCorrectorTriplets(T, elemH, problem, opts, P, Q, patch);
     end
 end
 
-trialBasis = P;
-testBasis = P;
-for T = 1:NT
-    trialBasis = trialBasis - corrCell{T};
-    testBasis = testBasis - corrStarCell{T};
-end
+trialBasis = lodAssembleCorrectedBasis(P, corrData, Nf, Nc);
+clear corrData
+testBasis = lodAssembleCorrectedBasis(P, corrStarData, Nf, Nc);
+clear corrStarData
 
 AH = testBasis' * A * trialBasis;
 bH = testBasis' * b;
@@ -71,6 +71,7 @@ defaults.solverMode = 'direct';
 defaults.solveCoarse = true;
 defaults.constraintTolerance = 1e-12;
 defaults.dropDependentConstraints = true;
+defaults.storePatchSubmeshes = false;
 
 names = fieldnames(defaults);
 for i = 1:numel(names)

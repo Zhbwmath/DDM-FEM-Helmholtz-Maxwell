@@ -2,10 +2,10 @@ function sub = lodSubmesh2D(node, elem, bdFlag, elemIds)
 % LODSUBMESH2D  Build local patch mesh and artificial-boundary DOF sets.
 
 local2global = unique(elem(elemIds, :));
-global2local = zeros(size(node, 1), 1);
-global2local(local2global) = 1:numel(local2global);
-
-localElem = global2local(elem(elemIds, :));
+[isLocal, localElem] = ismember(elem(elemIds, :), local2global);
+if any(~isLocal(:))
+    error('lodSubmesh2D:localMap', 'Patch element contains an unmapped node.');
+end
 localNode = node(local2global, :);
 localBdFlag = bdFlag(elemIds, :);
 

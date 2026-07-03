@@ -184,9 +184,9 @@ for i = 1:numel(names)
     end
 end
 
-if ~ismember(opts.degree, [1, 2])
+if ~ismember(opts.degree, [1, 2, 3])
     error('buildHuLiWeightedSchwarzHelmholtz2D:degree', ...
-        'Only P1 and P2 fine spaces are supported.');
+        'Only P1, P2, and P3 fine spaces are supported.');
 end
 if strcmpi(opts.coarseType, 'spectral') && isempty(opts.rho)
     error('buildHuLiWeightedSchwarzHelmholtz2D:rho', ...
@@ -241,13 +241,18 @@ if degree == 1
     fineNode = baseNode;
     fineElem = baseElem;
     p1ToFine = speye(size(baseNode, 1));
-elseif size(elem, 2) == 3
-    [fineNode, fineElem] = extendMesh2D(baseNode, baseElem, 2);
-    p1ToFine = prolongate_P1_P2(baseNode, baseElem);
 else
-    fineNode = node;
-    fineElem = elem;
-    p1ToFine = prolongate_P1_P2(baseNode, baseElem);
+    if size(elem, 2) == 3
+        [fineNode, fineElem] = extendMesh2D(baseNode, baseElem, degree);
+    else
+        fineNode = node;
+        fineElem = elem;
+    end
+    if degree == 2
+        p1ToFine = prolongate_P1_P2(baseNode, baseElem);
+    else
+        p1ToFine = prolongate_P1_P3(baseNode, baseElem);
+    end
 end
 
 K = assembleStiffness2D(fineNode, fineElem, degree);
@@ -258,6 +263,8 @@ qfun = @(x,y) helmholtzEnergyCoefficient(pde, x, y, []);
 energy = K + assembleWeightedMass2D(fineNode, fineElem, degree, qfun);
 
 fine = struct();
+fine.dim = 2;
+fine.form = 'standard';
 fine.degree = degree;
 fine.node = fineNode;
 fine.elem = fineElem;
@@ -273,6 +280,7 @@ fine.energy = energy;
 fine.pde = pde;
 fine.helmholtzInput = pde;
 fine.p1ToFine = p1ToFine;
+fine.baseToFine = p1ToFine;
 fine.N = size(fineNode, 1);
 end
 
