@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-06-26
+Updated: 2026-07-03
 
 ## MATLAB Execution
 
@@ -170,6 +170,7 @@ Use this workflow whenever the user asks to **reproduce**, **replicate**, or **m
     Fix: set gSign(:, 7:8) = 1 after the edge-DOF loop.
     ```
 - **Do NOT commit** half-finished work or code that hasn't been verified.
+- **Do NOT commit files under `debug/` by default** — Keep `debug/` available in fresh pulls only through marker or ignore files such as `debug/.gitignore`. Treat ordinary debug contents as local diagnostic scratch during cleanup and closeout. Leave untracked or modified debug scripts, generated logs, `.mat` files, and machine-specific launchers unstaged unless the user explicitly names them for inclusion or the artifact is required to reproduce a documented diagnostic result. Reusable verification should be promoted to `verify/` before committing.
 - **Do NOT commit**  paper PDFs or other copyrighted source documents. Commit only lightweight metadata, notes, or directory marker files that explain what should live there.
 - **Do NOT commit** API keys, or any other personal sensitive informaation.
 

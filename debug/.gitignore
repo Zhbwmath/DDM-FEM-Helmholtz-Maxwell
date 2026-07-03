@@ -1,0 +1,4 @@
+# Keep the debug directory available for local scratch work, but do not track
+# diagnostic scripts or generated artifacts by default.
+*
+!.gitignore
