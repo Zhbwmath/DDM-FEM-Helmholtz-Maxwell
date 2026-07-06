@@ -1,8 +1,8 @@
 Reproduction target: Static implementation audit for the abstract two-sided two-level hybrid DDM framework.
 Created: 2026-07-03
-Updated: 2026-07-03
+Updated: 2026-07-07
 Verification entry point: `verify/verify_hybrid_framework_spaces.m`; `debug/debug_cip_lxzz_local_apply_modes.m`
-Main utilities: `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `twoLevelHybridSchwarzHelmholtz2D`, `buildLODCoarseSchwarzHelmholtz2D`
+Main utilities: `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `twoLevelHybridSchwarzHelmholtz2D`, `buildLODCoarseSchwarzHelmholtz2D`, `buildLODHelmholtzPML2D`
 
 # Hybrid Framework Implementation Audit
 
@@ -28,9 +28,14 @@ No new framework object protocol was introduced.
 
 ## PML-LOD Status
 
-Static source search found no PML-aware LOD problem callback or wrapper. Existing PML functionality lives in fine/global PML assembly and PML Schwarz preconditioner paths, not in `src/LOD`.
+The Helmholtz/PML LOD subset from `Zhbwmath/LOD4Maxwell` is now integrated without importing Maxwell LOD or Nedelec code. The imported path adds:
 
-Current status: **PML-LOD is not implemented in this repo**. The framework task documents this as a future extension point rather than integrating a nonexistent coarse-space path.
+- `assembleHelmholtzPMLDivergence2D` for the divergence-form stretched-coordinate PML bilinear form;
+- `lodMomentConstraints` and `lodMomentGlobalConstraints` for exact $L^2$ moment kernels;
+- `helmholtzPMLLODProblem2D` and `buildLODHelmholtzPML2D` for the PML-aware `buildLOD` callback path;
+- `lodCorrectedBasis` for small global-corrector diagnostics.
+
+Current limitation: the LXZZ framework smoke verifies PML-LOD coarse-space injection with an exact small algebraic local solver. A PML-specific local Schwarz solver inside the hybrid framework remains an investigation item.
 
 ## Verification Scope
 
@@ -40,7 +45,7 @@ Current status: **PML-LOD is not implemented in this repo**. The framework task 
 - standard P1 coarse injection into P1-P3 fine spaces;
 - LXZZ identity consistency for small injected cases;
 - LOD P1-P1 and corrected LOD P1-P2 semantics;
-- static reporting that no PML-LOD implementation is present;
+- PML-LOD coarse-space injection through the same `opts.coarseSpace` contract;
 - optional full-vs-compact local apply equivalence when `HYBRID_FRAMEWORK_PARFOR_APPLY=1`.
 
 `debug/debug_cip_lxzz_local_apply_modes.m` is the focused timing probe for the `nGlobal` worker-output tradeoff. It compares serial, full-vector parfor, and compact parfor local apply modes, then writes `tasks/Frmwrk_hybrd2lvl_DDM/local_apply_mode_probe.md`.

@@ -1,8 +1,8 @@
 Reproduction target: Peterseim Helmholtz LOD pollution-elimination framework.
 Created: 2026-05-26
-Updated: 2026-05-27
-Verification entry point: `verify/verify_lod_helmholtz_smoke.m`, `verify/verify_lod_helmholtz3d_smoke.m`
-Main utilities: `buildLODHelmholtz2D`, `buildLODHelmholtz3D`, `assembleHelmholtz2D`, `assembleHelmholtz3D`, `weightedClementP1`
+Updated: 2026-07-07
+Verification entry point: `verify/verify_lod_helmholtz_smoke.m`, `verify/verify_lod_helmholtz3d_smoke.m`, `verify/verify_lod_pml_assembly.m`, `verify/verify_lod_pml_moment_constraints.m`, `verify/verify_lod_pml_global_correctors.m`
+Main utilities: `buildLODHelmholtz2D`, `buildLODHelmholtz3D`, `buildLODHelmholtzPML2D`, `assembleHelmholtz2D`, `assembleHelmholtz3D`, `assembleHelmholtzPMLDivergence2D`, `weightedClementP1`, `lodMomentConstraints`
 
 # LOD Helmholtz Formulation
 
@@ -32,3 +32,9 @@ The first 2D reproduction regime is small, controlled, and matrix-based:
 The 3D completion uses the same constrained saddle-corrector algebra on nested P1 tetrahedral meshes from `cubemesh`. All boundary faces are impedance faces, the energy comparison uses `K + k^2 M`, and the default verification remains smoke- and mini-sweep-scale rather than a full 3D reproduction study.
 
 The implementation intentionally does not use the older spectral/eigenfunction LOD prototype or `E:\bwzheng\Two_level_add` during development.
+
+## Helmholtz PML LOD Extension
+
+The 2D PML extension uses `buildLODHelmholtzPML2D` and the divergence-form PML matrix from `assembleHelmholtzPMLDivergence2D`. Its fine-scale space is defined by exact $L^2$ moment constraints $P^T M w=0$, not by the weighted Clement interpolation rows. This path was imported from the Helmholtz/PML subset of `Zhbwmath/LOD4Maxwell`; Maxwell LOD files were not imported.
+
+The PML extension is verified by small assembly, moment-constraint, and global-corrector checks. It is also injected into the abstract LXZZ hybrid framework through the existing `coarseSpace` contract in `verify/verify_hybrid_framework_spaces.m`.

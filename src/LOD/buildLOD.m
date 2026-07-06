@@ -69,6 +69,7 @@ defaults.oversampling = 1;
 defaults.useParfor = false;
 defaults.solverMode = 'direct';
 defaults.solveCoarse = true;
+defaults.correctorSide = 'both';
 defaults.constraintTolerance = 1e-12;
 defaults.dropDependentConstraints = true;
 defaults.storePatchSubmeshes = false;
@@ -78,6 +79,10 @@ for i = 1:numel(names)
     if ~isfield(opts, names{i}) || isempty(opts.(names{i}))
         opts.(names{i}) = defaults.(names{i});
     end
+end
+if ~ismember(lower(opts.correctorSide), {'both', 'trial', 'test'})
+    error('buildLOD:correctorSide', ...
+        'correctorSide must be ''both'', ''trial'', or ''test''.');
 end
 end
 

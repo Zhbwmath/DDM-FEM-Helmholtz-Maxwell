@@ -1,8 +1,8 @@
 Reproduction target: Abstract two-sided two-level hybrid DDM framework.
 Created: 2026-06-26
-Updated: 2026-07-03
+Updated: 2026-07-07
 Verification entry point: `verify/verify_hybrid_framework_spaces.m`; `verify/verify_cip_lxzz_lod_medium.m`; `verify/verify_cip_lxzz_huli_medium.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `buildLODHelmholtz2D`, `buildHuLiWeightedSchwarzHelmholtz2D`
+Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `buildLODHelmholtz2D`, `buildLODHelmholtzPML2D`, `buildHuLiWeightedSchwarzHelmholtz2D`
 
 # Abstract Two-Sided Two-Level Hybrid DDM
 
@@ -73,8 +73,8 @@ and the verifier checks $B^{-1}Ax=Q_mx$ on a reproducible random vector.
 | Helmholtz-harmonic/Hu--Li coarse space | implemented | `buildHuLiWeightedSchwarzHelmholtz2D`; `coarseSpace` injection | Used as a coarse-space choice inside LXZZ, not as native one-sided Hu--Li unless explicitly requested. |
 | Standard bilinear form | implemented | `assembleHelmholtz2D` | P1-P3 supported through existing Lagrange assemblers. |
 | CIP bilinear form | implemented | `assembleHelmholtzCIP2D`; `assembleCIP2D` | P1-P3 supported through the framework fine/local builders. |
-| PML fine/preconditioner forms | implemented outside LOD | `assembleHelmholtzPML2D`; `assembleGGGLSPML2D`; PML ORAS/RAS paths | Existing support is not a PML-LOD coarse-space implementation. |
-| PML-LOD coarse space | not found | none under `src/LOD` or Helmholtz LOD problem callbacks | Future work should add a PML-aware `buildLOD` problem callback before integration here. |
+| PML fine/preconditioner forms | partially implemented | `assembleHelmholtzPML2D`; `assembleGGGLSPML2D`; `assembleHelmholtzPMLDivergence2D`; PML ORAS/RAS paths | The LOD path uses the divergence-form PML bilinear form. |
+| PML-LOD coarse space | implemented for 2D P1 PML LOD | `buildLODHelmholtzPML2D`; `helmholtzPMLLODProblem2D`; `lodMomentConstraints` | Imported from the Helmholtz/PML subset of `Zhbwmath/LOD4Maxwell`; Maxwell LOD was not imported. Framework smoke uses an exact small algebraic local solver pending PML-local-Schwarz investigation. |
 
 ## Correct LOD P1-P2 Semantics
 
@@ -95,6 +95,22 @@ A_0=(E_{21}\Psi_1^\ast)^H A_{P2}(E_{21}\Psi_1).
 $$
 
 The same pattern extends to P3 through the P1-to-P3 embedding when a P1-built coarse basis is used with a P3 fine operator.
+
+## PML-LOD Semantics
+
+The PML LOD coarse space is built on the full PML computational domain with outer PML boundary DOFs removed from both fine and coarse corrector solves. The PML bilinear form is
+
+$$
+a_{\rm PML}(u,v)=\int_\Omega A_{\rm PML}\nabla u\cdot\nabla\overline v-k^2B_{\rm PML}u\overline v\,dx.
+$$
+
+The fine-scale constraint is the exact $L^2$ moment kernel
+
+$$
+P^T M w=0,
+$$
+
+where $P$ is the nested P1 coarse-to-fine prolongation and $M$ is the fine P1 mass matrix. This differs from the standard Helmholtz LOD path, which uses weighted Clement rows. The corrected PML trial/test bases can be passed into LXZZ through the existing `coarseSpace.nativeTrial/nativeTest` fields, and the coarse matrix is recomputed against the active PML fine matrix.
 
 ## Efficiency Notes
 

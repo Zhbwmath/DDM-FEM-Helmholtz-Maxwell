@@ -86,16 +86,38 @@ assert(size(preP2.coarseSpace.trial, 1) == fineP2.N, ...
 assert(relAH < 1e-12, 'LOD P1-P2 coarse matrix was not recomputed in P2.');
 fprintf('PASSED (P2 relAH %.2e)\n', relAH);
 
-%% ---- Test 3: PML-LOD availability report --------------------------------
-fprintf('Test 3: PML-LOD availability ... ');
-pmlLodFiles = [dir(fullfile(repoRoot, 'src', 'LOD', '**', '*PML*.m')); ...
-    dir(fullfile(repoRoot, 'src', 'LOD', '**', '*pml*.m'))];
-if isempty(pmlLodFiles)
-    fprintf('NOT FOUND; PML-LOD remains a documented extension point.\n');
-else
-    fprintf('FOUND %d candidate file(s); update the framework matrix.\n', ...
-        numel(pmlLodFiles));
-end
+%% ---- Test 3: PML-LOD coarse-space injection ------------------------------
+fprintf('Test 3: PML-LOD coarse-space injection ... ');
+kPML = 3;
+[nodeHP, elemHP, bdHP] = squaremesh([0, 1, 0, 1], 0.5);
+[nodePML, elemPML, bdPML] = squaremesh([0, 1, 0, 1], 0.25);
+pml = struct('physicalBox', [0.25, 0.75, 0.25, 0.75], ...
+    'pmlBox', [0, 1, 0, 1], 'sigmaMax', kPML, 'sigmaOrder', 2);
+pmlOpts = struct('oversampling', 1, 'solveCoarse', false, ...
+    'solverMode', 'direct', 'useParfor', false, ...
+    'constraintTolerance', 1e-12);
+lodPML = buildLODHelmholtzPML2D(nodeHP, elemHP, bdHP, ...
+    nodePML, elemPML, bdPML, kPML, pml, 0, pmlOpts);
+finePML = buildPMLFreeFineSpace(nodePML, elemPML, bdPML, kPML, pml, lodPML);
+coarseFree = lodPML.dof.coarseFree(:);
+coarsePML = struct('nativeTrial', ...
+        lodPML.basis.trial(lodPML.dof.fineFree, coarseFree), ...
+    'nativeTest', lodPML.basis.test(lodPML.dof.fineFree, coarseFree), ...
+    'object', lodPML, 'description', ...
+    'PML LOD basis on free P1 DOFs with L2 moment constraints');
+localExact = struct('applyInverse', @(r) finePML.A \ r, ...
+    'info', struct('boundaryCondition', 'exact PML free-DOF algebraic solve'));
+prePML = twoLevelHybridSchwarzHelmholtz2D(nodePML, elemPML, bdPML, kPML, ...
+    parts, nodeHP, elemHP, bdHP, struct('fineSpace', finePML, ...
+    'coarseSpace', coarsePML, 'localSolver', localExact, ...
+    'adjointType', 'reference'));
+relPMLAH = norm(prePML.coarseSpace.AH - lodPML.system.AH, 'fro') / ...
+    max(1, norm(lodPML.system.AH, 'fro'));
+errPML = hybridIdentityError(prePML);
+assert(relPMLAH < 1e-12, 'PML-LOD coarse matrix mismatch %.3e.', relPMLAH);
+assert(errPML < 1e-9, 'PML-LOD hybrid identity error %.3e is too large.', errPML);
+fprintf('PASSED (coarse=%d, relAH %.2e, identity %.2e)\n', ...
+    size(prePML.coarseSpace.AH, 1), relPMLAH, errPML);
 
 %% ---- Optional Test 4: local apply full/compact parfor equivalence --------
 if logical(envNumber('HYBRID_FRAMEWORK_PARFOR_APPLY', 0))
@@ -139,6 +161,37 @@ pool = gcp('nocreate');
 if isempty(pool)
     parpool('local', 2);
 end
+end
+
+
+function fine = buildPMLFreeFineSpace(node, elem, bdFlag, k, pml, lod)
+[A, ~, freeDof] = assembleHelmholtzPMLDivergence2D(node, elem, k, pml, 0, 1);
+K = assembleStiffness2D(node, elem, 1);
+M = assembleMass2D(node, elem, 1);
+freeDof = freeDof(:);
+N = numel(freeDof);
+
+fine = struct();
+fine.dim = 2;
+fine.form = 'pml-divergence';
+fine.degree = 1;
+fine.node = node(freeDof, :);
+fine.elem = elem;
+fine.bdFlag = bdFlag;
+fine.baseNode = node(freeDof, :);
+fine.baseElem = elem;
+fine.baseBdFlag = bdFlag;
+fine.A = A(freeDof, freeDof);
+fine.energy = (K + k^2 * M);
+fine.energy = fine.energy(freeDof, freeDof);
+fine.pde = normalizeHelmholtzPDE(k);
+fine.helmholtzInput = k;
+fine.p1ToFine = speye(N);
+fine.baseToFine = speye(N);
+fine.N = N;
+fine.pml = pml;
+fine.freeDof = freeDof;
+fine.lod = lod;
 end
 
 
