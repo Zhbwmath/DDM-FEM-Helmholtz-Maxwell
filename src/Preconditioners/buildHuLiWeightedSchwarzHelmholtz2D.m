@@ -27,6 +27,17 @@ end
 
 nSub = numel(partData);
 localData = cell(nSub, 1);
+adaptiveInfo = struct();
+if opts.adaptiveParallelPolicy
+    repS = representativePartIndex(partData);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [opts.useParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'Hu-Li coarse local subproblems', opts.useParfor, nSub, gateOpts, ...
+        @() setupOneLocal(fine, pde, partData(repS), ...
+        kappaRef, opts, solverMode));
+end
+
 if opts.useParfor
     parfor s = 1:nSub
         localData{s} = setupOneLocal(fine, pde, partData(s), ...
@@ -136,6 +147,7 @@ method.stats = struct('nSubdomains', nSub, ...
     'solverModeRequested', opts.solverMode, ...
     'solverModeEffective', solverMode, ...
     'estimatedStoredLuGB', storedLuGB);
+method.stats.adaptiveParallel = adaptiveInfo;
 method.timing = struct('totalSetup', toc(totalTimer), ...
     'localAssemblySum', sum([localInfo.assemblyTime]), ...
     'localFactorSum', sum([localInfo.factorTime]), ...
@@ -176,6 +188,8 @@ defaults.energySolve = [];
 defaults.cacheEnergySolver = false;
 defaults.cacheEnergyAdjoint = false;
 defaults.energyAdjointBlockSize = 64;
+defaults.adaptiveParallelPolicy = false;
+defaults.adaptiveParallelOptions = struct();
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -203,6 +217,15 @@ end
 if ~ismember(lower(opts.coarseSolverMode), {'lu', 'storedlu', 'direct', 'backslash'})
     error('buildHuLiWeightedSchwarzHelmholtz2D:coarseSolverMode', ...
         'coarseSolverMode must be "lu" or "direct".');
+end
+end
+
+
+function s = representativePartIndex(partData)
+sizes = arrayfun(@(p) numel(p.idx), partData);
+[~, s] = max(sizes);
+if isempty(s) || s < 1
+    s = 1;
 end
 end
 

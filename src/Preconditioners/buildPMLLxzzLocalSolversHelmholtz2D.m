@@ -13,6 +13,17 @@ gIdx = cell(nSub, 1);
 maps = cell(nSub, 1);
 localModes = cell(nSub, 1);
 solverMode = solverInfo.effective;
+adaptiveInfo = struct();
+
+if opts.adaptiveParallelPolicy
+    repS = representativePMLPartIndex(fine, parts);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [opts.setupParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'PML LXZZ local setup', opts.setupParfor, nSub, gateOpts, ...
+        @() setupOnePML(fine, parts(repS), nodeWeight, solverMode, opts));
+    solverInfo.setupParfor = opts.setupParfor;
+end
 
 if opts.setupParfor
     parfor s = 1:nSub
@@ -37,6 +48,7 @@ local.extensions = maps;
 local.info = localStats(gIdx, localModes, solverInfo);
 local.info.variant = 'pml';
 local.info.extensionNonzeros = sum(cellfun(@mapNnz, maps));
+local.info.adaptiveParallel = adaptiveInfo;
 end
 
 
@@ -92,6 +104,8 @@ defaults.applyMode = 'auto';
 defaults.fullVectorApplyLimitGB = 2;
 defaults.localPMLMode = 'auto';
 defaults.quadOrder = fine.pmlAssemblyOptions.quadOrder;
+defaults.adaptiveParallelPolicy = false;
+defaults.adaptiveParallelOptions = struct();
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -277,6 +291,21 @@ else
     raw = ones(numel(fullIdx), 1);
 end
 w = raw(:) ./ nodeWeight(fullIdx);
+end
+
+
+function s = representativePMLPartIndex(fine, parts)
+sizes = zeros(numel(parts), 1);
+for j = 1:numel(parts)
+    eIdx = parts(j).elemIdx(:);
+    if isempty(eIdx), continue; end
+    fullIdx = unique(fine.fullElem(eIdx, :));
+    sizes(j) = nnz(fine.fullToActive(fullIdx) > 0);
+end
+[~, s] = max(sizes);
+if isempty(s) || s < 1
+    s = 1;
+end
 end
 
 

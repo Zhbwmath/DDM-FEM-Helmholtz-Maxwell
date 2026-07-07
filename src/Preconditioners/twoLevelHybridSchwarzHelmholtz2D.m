@@ -138,6 +138,8 @@ defaults.useParfor = false;
 defaults.adjointType = 'energy';
 defaults.localStoredLuLimitGB = 200;
 defaults.localLuFillConstant = 40;
+defaults.adaptiveParallelPolicy = false;
+defaults.adaptiveParallelOptions = struct();
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -257,6 +259,7 @@ switch lower(opts.coarseType)
             lod = opts.lod;
         else
             lodOpts = opts.lodOptions;
+            lodOpts = inheritAdaptiveOptions(lodOpts, opts);
             lodOpts.solveCoarse = false;
             lod = buildLODHelmholtz2D(nodeH, elemH, bdH, fine.baseNode, ...
                 fine.baseElem, fine.baseBdFlag, fine.helmholtzInput, 0, 0, lodOpts);
@@ -425,11 +428,11 @@ solverMode = solverInfo.effective;
 switch lower(opts.variant)
     case {'q1', 'dirichlet'}
         local = setupDirichletLocalSolvers(fine, k, parts, ...
-            solverMode, solverInfo, opts.useParfor);
+            solverMode, solverInfo, opts);
         variant = 'dirichlet';
     case {'q2', 'impedance'}
         local = setupImpedanceLocalSolvers(fine, k, parts, ...
-            solverMode, solverInfo, opts.useParfor);
+            solverMode, solverInfo, opts);
         variant = 'impedance';
     otherwise
         error('twoLevelHybridSchwarzHelmholtz2D:variant', ...
@@ -481,6 +484,18 @@ end
 end
 
 
+function child = inheritAdaptiveOptions(child, parent)
+if ~isfield(child, 'adaptiveParallelPolicy') || ...
+        isempty(child.adaptiveParallelPolicy)
+    child.adaptiveParallelPolicy = parent.adaptiveParallelPolicy;
+end
+if ~isfield(child, 'adaptiveParallelOptions') || ...
+        isempty(child.adaptiveParallelOptions)
+    child.adaptiveParallelOptions = parent.adaptiveParallelOptions;
+end
+end
+
+
 function y = applyAbstractExtensions(r, extensions, solveLocalHandles, N)
 y = zeros(N, 1);
 for j = 1:numel(extensions)
@@ -514,7 +529,7 @@ end
 
 
 function local = setupDirichletLocalSolvers(fine, k, parts, solverMode, ...
-    solverInfo, useParfor)
+    solverInfo, opts)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
@@ -522,6 +537,17 @@ extensions = cell(nSub, 1);
 localAll = cell(nSub, 1);
 localFree = cell(nSub, 1);
 localMatrices = cell(nSub, 1);
+useParfor = opts.useParfor;
+adaptiveInfo = struct();
+
+if opts.adaptiveParallelPolicy
+    repS = representativePartIndex(fine, parts, true);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [useParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'built-in LXZZ Dirichlet local setup', useParfor, nSub, gateOpts, ...
+        @() setupOneDirichlet(fine, k, parts(repS), solverMode));
+end
 
 if useParfor
     parfor s = 1:nSub
@@ -557,6 +583,7 @@ local.applyInverse = @applyInverse;
 local.extensions = extensions;
 local.info = localStats(gIdx, 'Dirichlet artificial boundary', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
+local.info.adaptiveParallel = adaptiveInfo;
 end
 
 
@@ -608,12 +635,23 @@ end
 
 
 function local = setupImpedanceLocalSolvers(fine, k, parts, solverMode, ...
-    solverInfo, useParfor)
+    solverInfo, opts)
 nSub = numel(parts);
 solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
 extensions = cell(nSub, 1);
 nodeWeight = accumulatedDofWeights(fine, parts);
+useParfor = opts.useParfor;
+adaptiveInfo = struct();
+
+if opts.adaptiveParallelPolicy
+    repS = representativePartIndex(fine, parts, false);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [useParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'built-in LXZZ impedance local setup', useParfor, nSub, gateOpts, ...
+        @() setupOneImpedance(fine, k, parts, repS, nodeWeight, solverMode));
+end
 
 if useParfor
     parfor s = 1:nSub
@@ -640,6 +678,26 @@ local.applyInverse = @applyLocal;
 local.extensions = extensions;
 local.info = localStats(gIdx, 'coercive impedance local form', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@nnz, extensions));
+local.info.adaptiveParallel = adaptiveInfo;
+end
+
+
+function s = representativePartIndex(fine, parts, dirichletMode)
+sizes = zeros(numel(parts), 1);
+for j = 1:numel(parts)
+    eIdx = parts(j).elemIdx(:);
+    if isempty(eIdx), continue; end
+    allIdx = unique(fine.elem(eIdx, :));
+    if dirichletMode
+        sizes(j) = numel(activeDofsByHatWeight(fine.node, parts(j), allIdx));
+    else
+        sizes(j) = numel(allIdx);
+    end
+end
+[~, s] = max(sizes);
+if isempty(s) || s < 1
+    s = 1;
+end
 end
 
 

@@ -77,6 +77,8 @@ defaults.localLuFillConstant = 40;
 defaults.localStorage = 'factor';
 defaults.applyMode = 'auto';
 defaults.fullVectorApplyLimitGB = 2;
+defaults.adaptiveParallelPolicy = false;
+defaults.adaptiveParallelOptions = struct();
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -139,6 +141,17 @@ solvers = cell(nSub, 1);
 gIdx = cell(nSub, 1);
 maps = cell(nSub, 1);
 solverMode = solverInfo.effective;
+adaptiveInfo = struct();
+
+if opts.adaptiveParallelPolicy
+    repS = representativePartIndex(fine, parts, true);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [opts.setupParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'CIP LXZZ Dirichlet local setup', opts.setupParfor, nSub, gateOpts, ...
+        @() setupOneDirichlet(fine, parts(repS), solverMode, opts));
+    solverInfo.setupParfor = opts.setupParfor;
+end
 
 if opts.setupParfor
     parfor s = 1:nSub
@@ -162,6 +175,7 @@ local.applyLocal = @applyInverse;
 local.extensions = maps;
 local.info = localStats(gIdx, 'CIP Dirichlet artificial boundary', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@mapNnz, maps));
+local.info.adaptiveParallel = adaptiveInfo;
 end
 
 
@@ -227,6 +241,17 @@ gIdx = cell(nSub, 1);
 maps = cell(nSub, 1);
 nodeWeight = accumulatedDofWeights(fine, parts);
 solverMode = solverInfo.effective;
+adaptiveInfo = struct();
+
+if opts.adaptiveParallelPolicy
+    repS = representativePartIndex(fine, parts, false);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [opts.setupParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'CIP LXZZ impedance local setup', opts.setupParfor, nSub, gateOpts, ...
+        @() setupOneImpedance(fine, parts, repS, nodeWeight, solverMode, opts));
+    solverInfo.setupParfor = opts.setupParfor;
+end
 
 if opts.setupParfor
     parfor s = 1:nSub
@@ -252,6 +277,26 @@ local.applyLocal = @applyInverse;
 local.extensions = maps;
 local.info = localStats(gIdx, 'CIP coercive impedance local form', solverInfo);
 local.info.extensionNonzeros = sum(cellfun(@mapNnz, maps));
+local.info.adaptiveParallel = adaptiveInfo;
+end
+
+
+function s = representativePartIndex(fine, parts, dirichletMode)
+sizes = zeros(numel(parts), 1);
+for j = 1:numel(parts)
+    eIdx = parts(j).elemIdx(:);
+    if isempty(eIdx), continue; end
+    allIdx = unique(fine.elem(eIdx, :));
+    if dirichletMode
+        sizes(j) = numel(activeDofsByHatWeight(fine.node, parts(j), allIdx));
+    else
+        sizes(j) = numel(allIdx);
+    end
+end
+[~, s] = max(sizes);
+if isempty(s) || s < 1
+    s = 1;
+end
 end
 
 

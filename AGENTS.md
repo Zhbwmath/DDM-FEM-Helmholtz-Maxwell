@@ -1,7 +1,7 @@
 # DDM-FEM-Helmholtz-Maxwell Project
 
 Created: 2026-05-21
-Updated: 2026-07-03
+Updated: 2026-07-07
 
 ## MATLAB Execution
 
@@ -16,6 +16,7 @@ Updated: 2026-07-03
 
 - **Ask permission before any test estimated to use >200 GB memory.** Estimate memory usage and present it before running.
 - **Force-run override:** when the user explicitly says `force-run` for a named MATLAB verification or experiment, treat that phrase as explicit approval to bypass this repo's memory-permission gate and runtime queue gate for that named run. Still print or record the memory estimate and exact run target, keep checkpointing/resume behavior when the driver supports it, and do not reinterpret `force-run` as permission to change unrelated code, license files, credentials, or unrelated experiment rows. Driver-specific flags should use `*_FORCE_RUN=1`; for `verify/verify_cip_lxzz_lod_medium.m`, use `CIP_LXZZ_LOD_FORCE_RUN=1`.
+- **Adaptive DDM worker gate for local solves and coarse subproblems:** for large independent DDM local-solver setup or coarse-space subproblem assembly, a measured adaptive worker gate may override the fixed 200 GB pre-run gate only for the worker-count decision of those independent solves. This applies to LXZZ/Schwarz local solver construction, CIP and PML local solver construction, Hu-Li harmonic or economic local coarse subproblems, and LOD patch-corrector solves used during coarse-space assembly. The adaptive policy must be opt-in through task or solver options. Before starting parallel setup, run one representative largest subproblem, chosen by local DOFs plus constraints/trace columns/KKT or local-matrix nonzeros/RHS columns when available. Record phase timing, physical RAM, MATLAB private committed memory, available RAM, commit headroom or the closest MATLAB `memory` proxy, safety factor, reserved client/global/coarse/output/OS memory, chosen worker count, and final pool size. Start exactly that many workers and assert the active pool size. If a worker aborts, MATLAB reports out-of-memory, or Windows commit headroom is exhausted, stop the pool, reduce workers, and resume from checkpoint or rerun the independent setup; do not keep retrying with the same pool. When the adaptive policy is off, the fixed memory-permission gate and explicit worker settings remain in force.
 - **Use `parfor` for subdomain setup.** Start parpool before large runs: `parpool('local', feature('numcores'))`.
 - **Vectorize all assembly.** Use iFEM-style one-shot `sparse(ii, jj, ss, N, N)`.
 - **Memory estimation rule of thumb** for 2D Helmholtz with `N` nodes, `NT` elements, `nSub` subdomains, and GMRES restart/basis length `m`:

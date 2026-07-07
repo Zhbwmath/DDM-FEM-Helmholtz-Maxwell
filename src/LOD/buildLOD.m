@@ -28,6 +28,16 @@ corrData = cell(NT, 1);
 corrStarData = cell(NT, 1);
 stats = repmat(lodEmptyStats(), NT, 1);
 
+adaptiveInfo = struct();
+if opts.adaptiveParallelPolicy
+    repT = representativePatchIndex(patch, NT);
+    gateOpts = opts.adaptiveParallelOptions;
+    gateOpts.enabled = true;
+    [opts.useParfor, adaptiveInfo] = adaptiveParallelWorkerGate( ...
+        'LOD corrector subproblems', opts.useParfor, NT, gateOpts, ...
+        @() lodElementCorrectorTriplets(repT, elemH, problem, opts, P, Q, patch));
+end
+
 if opts.useParfor
     parfor T = 1:NT
         [corrData{T}, corrStarData{T}, stats(T)] = ...
@@ -54,6 +64,7 @@ lod.system = struct('A', A, 'b', b, 'AH', AH, 'bH', bH);
 lod.patch = patch;
 lod.patch.stats = stats;
 lod.options = opts;
+lod.options.adaptiveParallelInfo = adaptiveInfo;
 lod.solution = struct('xH', [], 'uh', []);
 
 if opts.solveCoarse
@@ -73,6 +84,8 @@ defaults.correctorSide = 'both';
 defaults.constraintTolerance = 1e-12;
 defaults.dropDependentConstraints = true;
 defaults.storePatchSubmeshes = false;
+defaults.adaptiveParallelPolicy = false;
+defaults.adaptiveParallelOptions = struct();
 
 names = fieldnames(defaults);
 for i = 1:numel(names)
@@ -83,6 +96,26 @@ end
 if ~ismember(lower(opts.correctorSide), {'both', 'trial', 'test'})
     error('buildLOD:correctorSide', ...
         'correctorSide must be ''both'', ''trial'', or ''test''.');
+end
+end
+
+
+function T = representativePatchIndex(patch, NT)
+sizes = zeros(NT, 1);
+for j = 1:NT
+    if isfield(patch, 'local2global') && numel(patch.local2global) >= j && ...
+            ~isempty(patch.local2global{j})
+        sizes(j) = numel(patch.local2global{j});
+    elseif isfield(patch, 'fineElemIds') && numel(patch.fineElemIds) >= j && ...
+            ~isempty(patch.fineElemIds{j})
+        sizes(j) = numel(patch.fineElemIds{j});
+    else
+        sizes(j) = 0;
+    end
+end
+[~, T] = max(sizes);
+if isempty(T) || T < 1
+    T = 1;
 end
 end
 
