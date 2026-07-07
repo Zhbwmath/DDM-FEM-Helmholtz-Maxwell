@@ -28,6 +28,7 @@ tests = {
     'LOD PML assembly',  'verify/verify_lod_pml_assembly', 'fast'
     'LOD PML moment constraints','verify/verify_lod_pml_moment_constraints', 'fast'
     'LOD PML global correctors','verify/verify_lod_pml_global_correctors', 'fast'
+    'PML LOD LXZZ hybrid instance','verify/verify_pml_lxzz_hybrid_instance', 'fast'
     'Hybrid DDM framework spaces','verify/verify_hybrid_framework_spaces', 'fast'
     'Nedelec Helmholtz decomposition','verify/verify_nedelec_helmholtz_decomp', 'fast'
     'Toselli Maxwell Schwarz','verify/verify_toselli_maxwell_schwarz', 'fast'

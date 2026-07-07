@@ -96,23 +96,17 @@ pml = struct('physicalBox', [0.25, 0.75, 0.25, 0.75], ...
 pmlOpts = struct('oversampling', 1, 'solveCoarse', false, ...
     'solverMode', 'direct', 'useParfor', false, ...
     'constraintTolerance', 1e-12);
-lodPML = buildLODHelmholtzPML2D(nodeHP, elemHP, bdHP, ...
-    nodePML, elemPML, bdPML, kPML, pml, 0, pmlOpts);
-finePML = buildPMLFreeFineSpace(nodePML, elemPML, bdPML, kPML, pml, lodPML);
-coarseFree = lodPML.dof.coarseFree(:);
-coarsePML = struct('nativeTrial', ...
-        lodPML.basis.trial(lodPML.dof.fineFree, coarseFree), ...
-    'nativeTest', lodPML.basis.test(lodPML.dof.fineFree, coarseFree), ...
-    'object', lodPML, 'description', ...
-    'PML LOD basis on free P1 DOFs with L2 moment constraints');
-localExact = struct('applyInverse', @(r) finePML.A \ r, ...
-    'info', struct('boundaryCondition', 'exact PML free-DOF algebraic solve'));
-prePML = twoLevelHybridSchwarzHelmholtz2D(nodePML, elemPML, bdPML, kPML, ...
-    parts, nodeHP, elemHP, bdHP, struct('fineSpace', finePML, ...
-    'coarseSpace', coarsePML, 'localSolver', localExact, ...
-    'adjointType', 'reference'));
-relPMLAH = norm(prePML.coarseSpace.AH - lodPML.system.AH, 'fro') / ...
-    max(1, norm(lodPML.system.AH, 'fro'));
+pmlParts = partitionMesh2D(nodePML, elemPML, bdPML, [2, 2], 'overlap', 0.25);
+pmlParts = smoothPartitionOfUnity2D(pmlParts, [0, 1, 0, 1], [2, 2], 0.25);
+pmlHybridOpts = struct();
+pmlHybridOpts.lodOptions = pmlOpts;
+pmlHybridOpts.localOptions = struct('solverMode', 'direct', ...
+    'localStorage', 'matrix', 'localPMLMode', 'subdomain');
+pmlHybridOpts.adjointType = 'reference';
+prePML = buildPMLLxzzHybridHelmholtz2D(nodePML, elemPML, bdPML, kPML, ...
+    pml, pmlParts, nodeHP, elemHP, bdHP, pmlHybridOpts);
+relPMLAH = norm(prePML.coarseSpace.AH - prePML.pml.lod.system.AH, 'fro') / ...
+    max(1, norm(prePML.pml.lod.system.AH, 'fro'));
 errPML = hybridIdentityError(prePML);
 assert(relPMLAH < 1e-12, 'PML-LOD coarse matrix mismatch %.3e.', relPMLAH);
 assert(errPML < 1e-9, 'PML-LOD hybrid identity error %.3e is too large.', errPML);
@@ -161,37 +155,6 @@ pool = gcp('nocreate');
 if isempty(pool)
     parpool('local', 2);
 end
-end
-
-
-function fine = buildPMLFreeFineSpace(node, elem, bdFlag, k, pml, lod)
-[A, ~, freeDof] = assembleHelmholtzPMLDivergence2D(node, elem, k, pml, 0, 1);
-K = assembleStiffness2D(node, elem, 1);
-M = assembleMass2D(node, elem, 1);
-freeDof = freeDof(:);
-N = numel(freeDof);
-
-fine = struct();
-fine.dim = 2;
-fine.form = 'pml-divergence';
-fine.degree = 1;
-fine.node = node(freeDof, :);
-fine.elem = elem;
-fine.bdFlag = bdFlag;
-fine.baseNode = node(freeDof, :);
-fine.baseElem = elem;
-fine.baseBdFlag = bdFlag;
-fine.A = A(freeDof, freeDof);
-fine.energy = (K + k^2 * M);
-fine.energy = fine.energy(freeDof, freeDof);
-fine.pde = normalizeHelmholtzPDE(k);
-fine.helmholtzInput = k;
-fine.p1ToFine = speye(N);
-fine.baseToFine = speye(N);
-fine.N = N;
-fine.pml = pml;
-fine.freeDof = freeDof;
-fine.lod = lod;
 end
 
 

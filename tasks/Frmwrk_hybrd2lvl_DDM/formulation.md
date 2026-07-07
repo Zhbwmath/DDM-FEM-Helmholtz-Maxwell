@@ -1,8 +1,8 @@
 Reproduction target: Abstract two-sided two-level hybrid DDM framework.
 Created: 2026-06-26
 Updated: 2026-07-07
-Verification entry point: `verify/verify_hybrid_framework_spaces.m`; `verify/verify_cip_lxzz_lod_medium.m`; `verify/verify_cip_lxzz_huli_medium.m`
-Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `buildLODHelmholtz2D`, `buildLODHelmholtzPML2D`, `buildHuLiWeightedSchwarzHelmholtz2D`
+Verification entry point: `verify/verify_hybrid_framework_spaces.m`; `verify/verify_pml_lxzz_hybrid_instance.m`; `verify/verify_cip_lxzz_lod_medium.m`; `verify/verify_cip_lxzz_huli_medium.m`
+Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildCIPLxzzFineSpaceHelmholtz2D`, `buildCIPLxzzLocalSolversHelmholtz2D`, `buildPMLLxzzFineSpaceHelmholtz2D`, `buildPMLLODCoarseSpaceHelmholtz2D`, `buildPMLLxzzLocalSolversHelmholtz2D`, `buildPMLLxzzHybridHelmholtz2D`, `buildLODHelmholtz2D`, `buildLODHelmholtzPML2D`, `buildHuLiWeightedSchwarzHelmholtz2D`
 
 # Abstract Two-Sided Two-Level Hybrid DDM
 
@@ -12,9 +12,9 @@ This task records the reusable algebra used by this repo when the user says `hyb
 
 The implementation deliberately reuses the existing object contracts:
 
-- `fineSpace` from `twoLevelHybridSchwarzHelmholtz2D` or `buildCIPLxzzFineSpaceHelmholtz2D`;
+- `fineSpace` from `twoLevelHybridSchwarzHelmholtz2D`, `buildCIPLxzzFineSpaceHelmholtz2D`, or `buildPMLLxzzFineSpaceHelmholtz2D`;
 - `coarseSpace` with `nativeTrial`, `nativeTest`, `embedding`, optional `AH`, optional `solve`, optional `solveAdjoint`, and optional `energyAdjointTrial`;
-- `localSolver` with `applyInverse` and local statistics, normally from `buildCIPLxzzLocalSolversHelmholtz2D` or the wrapper's built-in local solvers.
+- `localSolver` with `applyInverse` and local statistics, normally from `buildCIPLxzzLocalSolversHelmholtz2D`, `buildPMLLxzzLocalSolversHelmholtz2D`, or the wrapper's built-in local solvers.
 
 No separate framework API is introduced in this task.
 
@@ -73,8 +73,8 @@ and the verifier checks $B^{-1}Ax=Q_mx$ on a reproducible random vector.
 | Helmholtz-harmonic/Hu--Li coarse space | implemented | `buildHuLiWeightedSchwarzHelmholtz2D`; `coarseSpace` injection | Used as a coarse-space choice inside LXZZ, not as native one-sided Hu--Li unless explicitly requested. |
 | Standard bilinear form | implemented | `assembleHelmholtz2D` | P1-P3 supported through existing Lagrange assemblers. |
 | CIP bilinear form | implemented | `assembleHelmholtzCIP2D`; `assembleCIP2D` | P1-P3 supported through the framework fine/local builders. |
-| PML fine/preconditioner forms | partially implemented | `assembleHelmholtzPML2D`; `assembleGGGLSPML2D`; `assembleHelmholtzPMLDivergence2D`; PML ORAS/RAS paths | The LOD path uses the divergence-form PML bilinear form. |
-| PML-LOD coarse space | implemented for 2D P1 PML LOD | `buildLODHelmholtzPML2D`; `helmholtzPMLLODProblem2D`; `lodMomentConstraints` | Imported from the Helmholtz/PML subset of `Zhbwmath/LOD4Maxwell`; Maxwell LOD was not imported. Framework smoke uses an exact small algebraic local solver pending PML-local-Schwarz investigation. |
+| PML fine/preconditioner forms | implemented for 2D P1 divergence-form PML | `assembleHelmholtzPMLDivergence2D`; `buildPMLLxzzFineSpaceHelmholtz2D`; `buildPMLLxzzLocalSolversHelmholtz2D`; PML ORAS/RAS paths | The LXZZ path uses the active free-DOF PML algebra and local subdomain PML boxes when available. |
+| PML-LOD coarse space | implemented for 2D P1 PML LOD | `buildLODHelmholtzPML2D`; `helmholtzPMLLODProblem2D`; `lodMomentConstraints`; `buildPMLLODCoarseSpaceHelmholtz2D`; `buildPMLLxzzHybridHelmholtz2D` | Imported from the Helmholtz/PML subset of `Zhbwmath/LOD4Maxwell`; Maxwell LOD was not imported. The complete smoke now uses a local PML Schwarz component inside LXZZ. |
 
 ## Correct LOD P1-P2 Semantics
 
@@ -110,7 +110,7 @@ $$
 P^T M w=0,
 $$
 
-where $P$ is the nested P1 coarse-to-fine prolongation and $M$ is the fine P1 mass matrix. This differs from the standard Helmholtz LOD path, which uses weighted Clement rows. The corrected PML trial/test bases can be passed into LXZZ through the existing `coarseSpace.nativeTrial/nativeTest` fields, and the coarse matrix is recomputed against the active PML fine matrix.
+where $P$ is the nested P1 coarse-to-fine prolongation and $M$ is the fine P1 mass matrix. This differs from the standard Helmholtz LOD path, which uses weighted Clement rows. The corrected PML trial/test bases can be passed into LXZZ through the existing `coarseSpace.nativeTrial/nativeTest` fields, and the coarse matrix is recomputed against the active PML fine matrix. The complete 2D P1 instance is assembled by `buildPMLLxzzHybridHelmholtz2D`: it builds the active PML fine algebra, converts `buildLODHelmholtzPML2D` into an LXZZ coarse space, and attaches local PML solves from `buildPMLLxzzLocalSolversHelmholtz2D`. Local PML boxes follow the existing ORAS convention: `parts(s).coreBox` is the local physical box and `parts(s).extendedBox` or `parts(s).pmlBox` is the local PML box. If those fields are unavailable, the component can fall back to the global PML coefficients.
 
 ## Efficiency Notes
 
