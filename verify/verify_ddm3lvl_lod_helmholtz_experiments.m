@@ -66,15 +66,23 @@ function cfg = config()
 cfg.kValues = envVector('DDM3LVL_K_VALUES', [16, 32, 64]);
 cfg.H0InvValues = envVector('DDM3LVL_H0_INV_VALUES', [1, 2, 4, 8]);
 cfg.mValues = envVector('DDM3LVL_M_VALUES', [1, 2, 3, 4]);
-cfg.epsilonLabels = {'zero', 'k'};
+cfg.includeLogM = logical(envNumber('DDM3LVL_INCLUDE_LOG_M', 1));
+cfg.epsilonLabels = envStringList('DDM3LVL_EPSILON_LABELS', {'zero', 'k'});
 cfg.runEnabled = logical(envNumber('DDM3LVL_RUN', 0));
 cfg.maxRunDof = envNumber('DDM3LVL_MAX_RUN_DOF', 1500);
 cfg.memoryLimitGB = envNumber('DDM3LVL_MEMORY_LIMIT_GB', 200);
 cfg.tol = envNumber('DDM3LVL_TOL', 1e-6);
 cfg.maxit = envNumber('DDM3LVL_MAXIT', 80);
+cfg.coarseInnerTol = envNumber('DDM3LVL_COARSE_INNER_TOL', cfg.tol);
+cfg.coarseInnerMaxit = envNumber('DDM3LVL_COARSE_INNER_MAXIT', 80);
+cfg.coarseSolveMode = envString('DDM3LVL_COARSE_SOLVE_MODE', 'oneSweep');
+cfg.coarseFactorMode = envString('DDM3LVL_COARSE_FACTOR_MODE', 'lu');
+cfg.parallelLocalSetup = logical(envNumber('DDM3LVL_PARALLEL_LOCAL_SETUP', 0));
+cfg.compareLocalBasis = logical(envNumber('DDM3LVL_COMPARE_LOCAL_BASIS', 1));
 cfg.smax = envNumber('DDM3LVL_SMAX', 12);
 cfg.Ch = envNumber('DDM3LVL_CH', 1);
-suffix = envString('DDM3LVL_OUTPUT_SUFFIX', '');
+cfg.tildeBufferLayers = envNumber('DDM3LVL_TILDE_BUFFER_LAYERS', 2);
+suffix = envString('DDM3LVL_OUTPUT_SUFFIX', 'source');
 if ~isempty(suffix) && suffix(1) ~= '_'
     suffix = ['_' suffix];
 end
@@ -86,7 +94,11 @@ function cases = experimentCases(cfg)
 cases = repmat(baseCase(), 0, 1);
 for k = cfg.kValues
     for H0Inv = cfg.H0InvValues
-        for m = cfg.mValues
+        mSweep = unique(cfg.mValues);
+        if cfg.includeLogM
+            mSweep = unique([mSweep, ceil(log(k))]);
+        end
+        for m = mSweep
             for e = 1:numel(cfg.epsilonLabels)
                 c = baseCase();
                 c.k = k;
@@ -146,7 +158,12 @@ preExact = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, pde, ...
 grid = max(1, [c.H0Inv, c.H0Inv]);
 coarseOpts = struct('subdomainGrid', grid, 'overlap', 1 / max(1, c.H0Inv), ...
     'greaterOverlap', 1 / max(1, c.H0Inv), 'smax', cfg.smax, ...
-    'compareLocalBasis', true);
+    'compareLocalBasis', cfg.compareLocalBasis, 'geometryMode', 'source', ...
+    'sourceOversampling', c.m, 'tildeBufferLayers', cfg.tildeBufferLayers, ...
+    'strictPou', true, 'coarseSolveMode', cfg.coarseSolveMode, ...
+    'innerTolerance', cfg.coarseInnerTol, 'innerMaxit', cfg.coarseInnerMaxit, ...
+    'factorMode', cfg.coarseFactorMode, ...
+    'parallelLocalSetup', cfg.parallelLocalSetup);
 coarse = buildLODCoarseSchwarzHelmholtz2D(preExact, nodeH, elemH, bdH, coarseOpts);
 threeOpts = struct('fineSpace', preExact.fineSpace, ...
     'coarseSpace', coarse.coarseSpace, 'localSolver', preExact.localSolver, ...
@@ -156,7 +173,9 @@ preThree = twoLevelHybridSchwarzHelmholtz2D(node, elem, bdFlag, pde, ...
 
 b = assemblePlaneWaveBoundaryLoad2D(node, elem, bdFlag, c.k, 1);
 [~, flagExact, relExact, iterExact, resExact] = gmres(preExact.A, b, [], cfg.tol, cfg.maxit, @preExact.applyResidual);
+coarse.resetInnerSolveStats();
 [~, flagThree, relThree, iterThree, resThree] = gmres(preThree.A, b, [], cfg.tol, cfg.maxit, @preThree.applyResidual);
+innerStats = coarse.getInnerSolveStats();
 r0 = preExact.coarseSpace.test' * b;
 [~, flagCoarse, relCoarse, iterCoarse, resCoarse] = gmres(coarse.A0, r0, [], cfg.tol, cfg.maxit, @coarse.applyM0inv);
 
@@ -170,14 +189,28 @@ out.coarseFlag = flagCoarse;
 out.exactRelres = relExact;
 out.threeRelres = relThree;
 out.coarseRelres = relCoarse;
+out.innerCoarseCalls = innerStats.calls;
+out.innerCoarsePrimalCalls = innerStats.primalCalls;
+out.innerCoarseAdjointCalls = innerStats.adjointCalls;
+out.innerCoarseIterMean = innerStats.meanIterations;
+out.innerCoarseIterMax = innerStats.maxIterations;
+out.innerCoarseFlagMax = innerStats.maxFlag;
+out.innerCoarseRelresMax = innerStats.maxRelres;
 out.sContract = coarse.diagnostics.sContract;
 out.sFovPositive = coarse.diagnostics.sFovPositive;
-out.maxNormEPower = max(coarse.diagnostics.normEPower);
-out.maxAlpha = max(coarse.diagnostics.alpha);
-out.basisContainedTrial = coarse.basisComparison.maxContainedTrialRelEnergy;
-out.basisContainedTest = coarse.basisComparison.maxContainedTestRelEnergy;
-out.basisKernelTrial = coarse.basisComparison.maxKernelTrial;
-out.basisKernelTest = coarse.basisComparison.maxKernelTest;
+out.maxNormEPower = maxOrNaN(coarse.diagnostics.normEPower);
+out.maxAlpha = maxOrNaN(coarse.diagnostics.alpha);
+out.basisContainedTrial = basisComparisonValue(coarse.basisComparison, 'maxContainedTrialRelEnergy');
+out.basisContainedTest = basisComparisonValue(coarse.basisComparison, 'maxContainedTestRelEnergy');
+out.basisSafeTrial = basisComparisonValue(coarse.basisComparison, 'maxSafeTrialRelEnergy');
+out.basisSafeTest = basisComparisonValue(coarse.basisComparison, 'maxSafeTestRelEnergy');
+out.basisKernelTrial = basisComparisonValue(coarse.basisComparison, 'maxKernelTrial');
+out.basisKernelTest = basisComparisonValue(coarse.basisComparison, 'maxKernelTest');
+out.pouExact = double(coarse.stats.pouExact);
+out.tildeLayers = coarse.stats.tildeLayersMax;
+out.omegaDiameterMax = coarse.stats.omegaDiameterMax;
+out.localCoarseDofMax = coarse.stats.coarseDofMax;
+out.localFineDofMax = coarse.stats.fineDofMax;
 out.exactResvecLength = numel(resExact);
 out.threeResvecLength = numel(resThree);
 out.coarseResvecLength = numel(resCoarse);
@@ -203,8 +236,15 @@ r = struct('k', NaN, 'epsilonLabel', '', 'hInv', NaN, 'HInv', NaN, ...
     'exactIter', NaN, 'threeIter', NaN, 'coarseIter', NaN, ...
     'exactFlag', NaN, 'threeFlag', NaN, 'coarseFlag', NaN, ...
     'exactRelres', NaN, 'threeRelres', NaN, 'coarseRelres', NaN, ...
+    'innerCoarseCalls', NaN, 'innerCoarsePrimalCalls', NaN, ...
+    'innerCoarseAdjointCalls', NaN, 'innerCoarseIterMean', NaN, ...
+    'innerCoarseIterMax', NaN, 'innerCoarseFlagMax', NaN, ...
+    'innerCoarseRelresMax', NaN, ...
     'sContract', NaN, 'sFovPositive', NaN, 'maxNormEPower', NaN, ...
     'maxAlpha', NaN, 'basisContainedTrial', NaN, 'basisContainedTest', NaN, ...
+    'basisSafeTrial', NaN, 'basisSafeTest', NaN, 'pouExact', NaN, ...
+    'tildeLayers', NaN, 'omegaDiameterMax', NaN, ...
+    'localCoarseDofMax', NaN, 'localFineDofMax', NaN, ...
     'basisKernelTrial', NaN, 'basisKernelTest', NaN, ...
     'exactResvecLength', NaN, 'threeResvecLength', NaN, ...
     'coarseResvecLength', NaN, 'status', '', 'notes', '');
@@ -264,17 +304,19 @@ fprintf(fid, 'Updated: %s\n', char(datetime('today', 'Format', 'yyyy-MM-dd')));
 fprintf(fid, 'Verification entry point: `verify/verify_ddm3lvl_lod_helmholtz_experiments.m`\n');
 fprintf(fid, 'Main utilities: `buildLODCoarseSchwarzHelmholtz2D`, `twoLevelHybridSchwarzHelmholtz2D`, MATLAB `gmres`\n\n');
 fprintf(fid, '# Three-Level LOD-DDM Experiment Results\n\n');
-fprintf(fid, 'Run enabled: `%d`. Memory limit: %.1f GB. Max run DOF: %d.\n\n', ...
-    cfg.runEnabled, cfg.memoryLimitGB, cfg.maxRunDof);
-fprintf(fid, '| k | eps | h | H | H0 | m | N | estimate GB | exact it | three it | coarse it | s0 | alpha s | basis contained trial | basis contained test | status | notes |\n');
-fprintf(fid, '|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n');
+fprintf(fid, 'Run enabled: `%d`. Memory limit: %.1f GB. Max run DOF: %d. Source buffer `C`: %d. Include `ceil(log(k))` m-row: `%d`. Epsilon labels: `%s`. Coarse solve mode: `%s`.\n\n', ...
+    cfg.runEnabled, cfg.memoryLimitGB, cfg.maxRunDof, cfg.tildeBufferLayers, ...
+    cfg.includeLogM, strjoin(cfg.epsilonLabels, ', '), cfg.coarseSolveMode);
+fprintf(fid, '| k | eps | h | H | H0 | m | N | estimate GB | exact outer it | source 3lvl outer it | standalone coarse it | nested GMRES mean it | nested GMRES max it | nested GMRES calls | PoU exact | tilde layers | safe trial | safe test | status | notes |\n');
+fprintf(fid, '|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|\n');
 for i = 1:numel(results)
     r = results(i);
-    fprintf(fid, '| %.0f | %s | 1/%d | 1/%d | 1/%d | %d | %.0f | %.2f | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n', ...
+    fprintf(fid, '| %.0f | %s | 1/%d | 1/%d | 1/%d | %d | %.0f | %.2f | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n', ...
         r.k, r.epsilonLabel, r.hInv, r.HInv, r.H0Inv, r.m, r.ndof, r.estimateGB, ...
         mdNumber(r.exactIter), mdNumber(r.threeIter), mdNumber(r.coarseIter), ...
-        mdNumber(r.sContract), mdNumber(r.sFovPositive), ...
-        mdNumber(r.basisContainedTrial), mdNumber(r.basisContainedTest), ...
+        mdNumber(r.innerCoarseIterMean), mdNumber(r.innerCoarseIterMax), ...
+        mdNumber(r.innerCoarseCalls), mdNumber(r.pouExact), mdNumber(r.tildeLayers), ...
+        mdNumber(r.basisSafeTrial), mdNumber(r.basisSafeTest), ...
         r.status, mdEscape(r.notes));
 end
 end
@@ -297,11 +339,13 @@ saveas(fig, fullfile(outDir, ['fig_three_level_gmres_iterations' cfg.outputSuffi
 close(fig);
 
 fig = figure('Visible', 'off');
-plot([r.k], [r.sContract], 'o-', 'LineWidth', 1.2);
-xlabel('$k$', 'Interpreter', 'latex');
-ylabel('$s_0$', 'Interpreter', 'latex');
-grid on;
-saveas(fig, fullfile(outDir, ['fig_three_level_s0_vs_k' cfg.outputSuffix '.png']));
+if any(isfinite([r.sContract]))
+    plot([r.k], [r.sContract], 'o-', 'LineWidth', 1.2);
+    xlabel('$k$', 'Interpreter', 'latex');
+    ylabel('$s_0$', 'Interpreter', 'latex');
+    grid on;
+    saveas(fig, fullfile(outDir, ['fig_three_level_s0_vs_k' cfg.outputSuffix '.png']));
+end
 close(fig);
 end
 
@@ -349,6 +393,29 @@ end
 end
 
 
+function y = maxOrNaN(x)
+if isempty(x)
+    y = NaN;
+else
+    x = x(isfinite(x));
+    if isempty(x)
+        y = NaN;
+    else
+        y = max(x);
+    end
+end
+end
+
+
+function v = basisComparisonValue(comparison, field)
+if isempty(comparison) || ~isstruct(comparison) || ~isfield(comparison, field)
+    v = NaN;
+else
+    v = comparison.(field);
+end
+end
+
+
 function v = envNumber(name, defaultValue)
 s = getenv(name);
 if isempty(s)
@@ -367,6 +434,31 @@ if isempty(s)
 else
     v = s;
 end
+end
+
+
+function labels = envStringList(name, defaultValue)
+s = getenv(name);
+if isempty(s)
+    labels = defaultValue;
+    return;
+end
+toks = regexp(strtrim(s), '[,\s;]+', 'split');
+toks = toks(~cellfun('isempty', toks));
+labels = cell(size(toks));
+for i = 1:numel(toks)
+    token = lower(toks{i});
+    switch token
+        case {'0', 'zero', 'eps0'}
+            labels{i} = 'zero';
+        case {'k', 'epsk'}
+            labels{i} = 'k';
+        otherwise
+            error('verify_ddm3lvl:epsilonLabels', ...
+                'Unknown epsilon label "%s".', toks{i});
+    end
+end
+labels = unique(labels, 'stable');
 end
 
 

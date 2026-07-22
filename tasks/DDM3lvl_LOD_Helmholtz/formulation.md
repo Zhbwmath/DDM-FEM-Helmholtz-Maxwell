@@ -1,159 +1,283 @@
 Reproduction target: Three-level LOD-DDM Helmholtz coarse solve inspired by LXZZ25.
 Created: 2026-06-18
-Updated: 2026-06-18
+Updated: 2026-07-21
 Verification entry point: `verify/verify_ddm3lvl_lod_helmholtz.m`; `verify/verify_ddm3lvl_lod_helmholtz_experiments.m`
 Main utilities: `twoLevelHybridSchwarzHelmholtz2D`, `buildLODCoarseSchwarzHelmholtz2D`, `buildLODHelmholtz2D`, `coarseHatPartition2D`, MATLAB `gmres`
 
-# Three-Level LOD-DDM Helmholtz Formulation
+# Source-Faithful Three-Level LOD-DDM Helmholtz Formulation
 
-## Discrete Objects
+## Source-Extracted Hierarchy
 
-The existing LXZZ25 wrapper builds the fine Helmholtz matrix
+Source: `tasks/DDM3lvl_LOD_Helmholtz/Solver_Description.zip`, entry
+`main.tex`. The archive contains no PDF file; it contains `main.tex`,
+`relerr.png`, and an empty `refs.bib`.
 
-$$
-A_h = K_h - M_{k^2+i\varepsilon,h} - iM_{\sqrt{k^2+i\varepsilon},\Gamma,h},
-$$
+The subscript $\ell$ is a subdomain counter. It is not the overlap or
+oversampling parameter. The LOD oversampling parameter is $m$.
 
-and the positive energy matrix
-
-$$
-D_h = K_h + M_{|k|^2,h}.
-$$
-
-For the LOD coarse space, the wrapper stores embedded trial and test bases
+The source hierarchy for each coarse-level subdomain is
 
 $$
-\Psi = [\psi_i], \qquad \Psi^\star = [\psi_i^\star].
-$$
-
-The exact two-level method uses
-
-$$
-A_0 = (\Psi^\star)^*A_h\Psi
-$$
-
-and applies the exact coarse residual inverse through `A0 \ r0`. The
-three-level method keeps the same $A_0$, $\Psi$, and $\Psi^\star$, but replaces
-the exact coarse solve by a one-level Schwarz approximate inverse on the
-coarse coefficient space.
-
-The diagnostic norm is never the indefinite Helmholtz matrix. It is
-
-$$
-G_0 = \Psi^*D_h\Psi,
-\qquad |x|_{G_0}^2=x^*G_0x.
-$$
-
-## Coarse Schwarz Approximate Solve
-
-Let $\chi_\ell$ be a coarse partition-of-unity cutoff and let $\chi_\ell^>$
-be its enlarged support cutoff. The implementation realizes both as coarse
-finite element multiplication matrices, projected back to the nodal coarse
-space:
-
-$$
-C_\ell=M_H^{-1}M_{\chi_\ell},
+\operatorname{supp}\chi_{0,\ell}
+\subset
+\{\chi_{0,\ell}^{>}=1\}
+\subset
+\operatorname{supp}\chi_{0,\ell}^{>}
+\subset
+\Omega_{0,\ell},
 \qquad
-C_\ell^>=M_H^{-1}M_{\chi_\ell^>}.
+\widetilde\Omega_{0,\ell}
+=
+\omega_0^{m+C}(\Omega_{0,\ell}).
 $$
 
-For coarse index set $I_\ell$, let $J_\ell$ inject local coarse coefficients
-into the global coarse coefficient vector. The local matrix is assembled from
-the local fine Helmholtz matrix on the corrected-basis support:
+Here $\Omega_{0,\ell}$ is already an overlapping coarse-level subdomain. It
+contains the support of both cutoffs. The local computational domain
+$\widetilde\Omega_{0,\ell}$ is not the support of $\chi_{0,\ell}^{>}$; it is
+an additional $m+C$ coarse-layer enlargement of $\Omega_{0,\ell}$, where $C$
+is a fixed buffer used to keep artificial impedance boundaries away from the
+basis functions whose corrected supports are needed inside $\Omega_{0,\ell}$.
+The current default is $C=2$ coarse layers.
+
+The safe equality region is the set of coarse nodes/basis functions whose
+localized global LOD patches are contained in $\Omega_{0,\ell}$:
+
+$$
+S_{0,\ell}^{eq}
+=
+\left\{
+i:
+\omega_0^m(\operatorname{supp}\Phi_i)
+\subset
+\Omega_{0,\ell}
+\right\}.
+$$
+
+The cutoff construction must satisfy
+
+$$
+\{\chi_{0,\ell}^{>}=1\}
+\subset
+S_{0,\ell}^{eq}.
+$$
+
+For columns in this safe region, the locally corrected basis computed on
+$\widetilde\Omega_{0,\ell}$ with artificial impedance boundary agrees with the
+original localized corrector in the center:
+
+$$
+\mathcal C_{\ell,m}\Phi_i
+=
+\mathcal C_m\Phi_i,
+\qquad
+i\in S_{0,\ell}^{eq}.
+$$
+
+## Local Spaces and Extension
+
+The local fine and coarse spaces are
+
+$$
+V_{h,\ell}=V_h(\widetilde\Omega_{0,\ell}),
+\qquad
+V_{H,\ell}=V_H(\widetilde\Omega_{0,\ell}),
+$$
+
+with local quasi-interpolation
+
+$$
+I_{H,\ell}:V_h(\widetilde\Omega_{0,\ell})
+\to
+V_H(\widetilde\Omega_{0,\ell}).
+$$
+
+The local fine-scale kernel is
+
+$$
+W_{h,\ell}=\ker I_{H,\ell}.
+$$
+
+The zero-extension/global coarse-node injection is
+
+$$
+E_\ell:V_H(\widetilde\Omega_{0,\ell})\to V_H(\Omega),
+\qquad
+(E_\ell v)(x)
+=
+\begin{cases}
+v(x), & x\in\widetilde\Omega_{0,\ell}\text{ on the local coarse mesh},\\
+0, & \text{otherwise}.
+\end{cases}
+$$
+
+The local impedance bilinear form on $\widetilde\Omega_{0,\ell}$ is
+
+$$
+a_{\varepsilon,\widetilde\ell}(u,v)
+=
+(\nabla u,\nabla v)_{\widetilde\Omega_{0,\ell}}
+-
+(k^2+i\varepsilon)(u,v)_{\widetilde\Omega_{0,\ell}}
+-
+i\sqrt{k^2+i\varepsilon}(u,v)_{\partial\widetilde\Omega_{0,\ell}}.
+$$
+
+The local trial and test LOD spaces are
+
+$$
+V_{H,m,\ell}
+=
+(I-\mathcal C_{\ell,m})V_H(\widetilde\Omega_{0,\ell}),
+\qquad
+V_{H,m,\ell}^{\star}
+=
+(I-\mathcal C_{\ell,m}^{\star})V_H(\widetilde\Omega_{0,\ell}).
+$$
+
+## Source-Mode Local Coarse Solver
+
+The local source-mode matrix is assembled from locally recomputed trial and
+test bases on $\widetilde\Omega_{0,\ell}$:
 
 $$
 A_{0,\ell}
 =
-(\Psi_\ell^\star)^* A_{h,\ell}\Psi_\ell.
+(\Psi_\ell^\star)^*A_{h,\widetilde\ell}\Psi_\ell.
 $$
 
-The approximate inverse is
+The local coarse solver is the source expression with the local
+quasi-interpolation retained:
 
 $$
-M_0^{-1}r
+a_\ell(Q_{0,m,\ell}v_h,v_{H,m,\ell}^{\star})
 =
-\sum_\ell
-C_\ell J_\ell A_{0,\ell}^{-1}J_\ell^*(C_\ell^>)^*r.
-$$
-
-The implemented adjoint action is the exact algebraic adjoint of this
-approximate inverse, not a reused primal solve.
-
-## Local-Versus-Global LOD Basis Diagnostic
-
-Before trusting restricted global corrected columns for local coarse matrices,
-the smoke test recomputes local LOD trial and test correctors on each coarse
-DDM subdomain. For a local subdomain, it builds local fine and coarse meshes,
-uses local impedance boundary flags on artificial boundaries, and rebuilds
-
-$$
-(I-C_{m,\ell})\Phi_i^\ell,
-\qquad
-(I-C_{m,\ell}^\star)\Phi_i^\ell.
-$$
-
-These local bases are compared with restricted global LOD columns
-
-$$
-(I-C_m)\Phi_i,
-\qquad
-(I-C_m^\star)\Phi_i.
-$$
-
-The report separates columns whose global LOD patches are fully contained in
-the local domain from columns touching local artificial boundaries. Contained
-columns are expected to agree to saddle-solve tolerance. Boundary-touched
-columns are diagnostics and can differ because the local problem imposes a
-different artificial boundary.
-
-## Diagnostics
-
-The coarse preconditioned and error-propagation operators are
-
-$$
-S_0=M_0^{-1}A_0,
-\qquad
-E_0=I-S_0.
-$$
-
-For small coarse systems the implementation assembles `M0inv`, `S0`, and `E0`
-explicitly. It then records
-
-$$
-|E_0^s|_{G_0}
-=
-\sqrt{\lambda_{\max}((E_0^s)^*G_0E_0^s,G_0)}
-$$
-
-and
-
-$$
-\alpha_s
-=
-\lambda_{\min}\left(
-\frac{G_0(I-E_0^s)+(I-E_0^s)^*G_0}{2},
-G_0
+a\!\left(
+v_h,
+(I-\mathcal C_m^\star)
+\Pi_H\bigl(
+\chi_{0,\ell}^{>}
+E_\ell I_{H,\ell}v_{H,m,\ell}^{\star}
+\bigr)
 \right).
 $$
 
-The optional $s$-sweep coarse inverse is
+The gathered additive source-mode coarse preconditioner is
 
 $$
-G_0^{(s)}r
+\widetilde M_{0,m}^{-1}r
 =
-\sum_{j=0}^{s-1}E_0^jM_0^{-1}r,
+\sum_\ell
+\Pi_h\bigl(
+\chi_{0,\ell}
+E_\ell I_{H,\ell}Q_{0,m,\ell}r
+\bigr).
 $$
 
-and satisfies
+In coefficient form, the current implementation realizes
+$E_\ell I_{H,\ell}$ by the local-to-global coarse-node injection and applies
+$\chi_{0,\ell}$ and $\chi_{0,\ell}^{>}$ as nodal coarse projection operators.
+The partition of unity is required to be exact:
 
 $$
-I-G_0^{(s)}A_0=E_0^s.
+\sum_\ell \Pi_H(\chi_{0,\ell}\cdot)=I
 $$
 
-## Current Implementation Status
+on the coarse coefficient space. This is a hard identity check, not a
+tolerance-based floating diagnostic.
 
-The first implementation is intentionally 2D and P1-only. It preserves the
-existing LXZZ25 residual/function-level algebra by injecting a replacement
-`coarseSpace.solve` and `coarseSpace.solveAdjoint` into
-`twoLevelHybridSchwarzHelmholtz2D`; the fine-level Schwarz solver is not
-rewritten.
+This gathered operator is used directly as the default coarse-space solve:
+
+$$
+z_0 = \widetilde M_{0,m}^{-1}r_0.
+$$
+
+Thus each outer LXZZ preconditioner application uses one application of the
+source-DD coarse operator in place of $A_0^{-1}$; it does not run a nested
+GMRES solve on $A_0z=r_0$. The preconditioned inner-GMRES mode remains
+available only as an explicit diagnostic option. The local source-DD coarse
+matrices are stored as sparse LU factors by default; raw sparse backslash
+remains available only as an explicit diagnostic option.
+
+## Relation to the LXZZ Wrapper
+
+The fine Helmholtz matrix and positive energy matrix remain
+
+$$
+A_h=K_h-M_{k^2+i\varepsilon,h}
+-iM_{\sqrt{k^2+i\varepsilon},\Gamma,h},
+\qquad
+D_h=K_h+M_{|k|^2,h}.
+$$
+
+The exact two-level LOD coarse operator remains
+
+$$
+A_0=(\Psi^\star)^*A_h\Psi.
+$$
+
+The source three-level variant replaces only `coarseSpace.solve` and
+`coarseSpace.solveAdjoint` inside `twoLevelHybridSchwarzHelmholtz2D`. The
+outer LXZZ residual/function-level algebra and the fine-level impedance local
+solver
+
+$$
+K_i+k^2M_i-i kM_{\Gamma_i}
+$$
+
+are unchanged.
+
+## Current Implementation Stage
+
+Implemented now:
+
+- source-mode coarse geometry with
+  $\Omega_{0,\ell}\subset\widetilde\Omega_{0,\ell}$ and
+  $\widetilde\Omega_{0,\ell}=\omega_0^{m+C}(\Omega_{0,\ell})$;
+- exact nodal coarse partition of unity for $\chi_{0,\ell}$;
+- $\chi_{0,\ell}^{>}$ used only on the local test-side restriction and
+  enforced to contain $\operatorname{supp}\chi_{0,\ell}$ inside its plateau;
+- local source-mode coarse matrices assembled from locally recomputed LOD
+  trial/test bases on $\widetilde\Omega_{0,\ell}$ and stored as sparse LU
+  factors;
+- default one-shot application of the gathered source-DD coarse
+  preconditioner in place of $A_0^{-1}$;
+- optional parallel construction of independent source-local coarse solvers,
+  enabled in the full-sweep runner;
+- local-basis comparison classified into safe equality, interior-but-not-safe,
+  and artificial-boundary-touched columns;
+- injected source coarse apply handles for the existing LXZZ wrapper.
+
+For the iteration-trend sweep, repeated local/global basis comparison is
+disabled in the runner after being checked by the focused verification. The
+$H_0=1$ one-subdomain control is excluded from the trend table after the
+focused verification has checked that it recovers the exact coarse action. This
+keeps the $k,H_0,m,\varepsilon$ trend experiment centered on exact two-level
+outer GMRES, source three-level outer GMRES using the one-shot coarse DD
+operator, and standalone coarse-GMRES diagnostics. Basis fields in that full
+CSV are therefore `NaN`.
+
+Postponed to the next diagnostics stage:
+
+- explicit construction of global $M_0^{-1}$;
+- explicit construction of $E_0^s$ or $G_0^{(s)}$;
+- explicit $|E_0^s|_{G_0}$ and $\alpha_s$ tables for the source geometry.
+
+## Verification Plan
+
+The focused verification script checks:
+
+1. $\operatorname{supp}\chi_{0,\ell}
+   \subset \{\chi_{0,\ell}^{>}=1\}\subset\Omega_{0,\ell}$.
+2. $\Omega_{0,\ell}\subset\widetilde\Omega_{0,\ell}$ with exactly $m+C$
+   coarse expansion layers.
+3. $\sum_\ell \Pi_H(\chi_{0,\ell}\cdot)=I$ exactly on coarse coefficients.
+4. Safe local/global corrected-basis columns agree to saddle-solve tolerance.
+5. `applyM0invAdjoint` satisfies the Euclidean adjoint identity.
+6. The LXZZ wrapper still satisfies `applyResidual(A*x) == apply(x)`.
+7. Fine-level local solver statistics are unchanged by the coarse-solve
+   injection.
+
+The experiment driver records exact two-level GMRES histories, source
+three-level GMRES histories, coarse GMRES histories, local-basis errors,
+PoU identity status, setup information, local sizes, and memory estimates for
+trends in $H_0$ and $k$.

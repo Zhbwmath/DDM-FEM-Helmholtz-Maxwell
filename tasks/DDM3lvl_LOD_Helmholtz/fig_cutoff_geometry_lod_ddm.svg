@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#374151"/>
+    </marker>
+    <pattern id="tildeHatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#d97706" stroke-width="2" opacity="0.35"/>
+    </pattern>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 28px; font-weight: 700; fill: #111827; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 17px; fill: #374151; }
+      .label { font-family: Arial, sans-serif; font-size: 16px; fill: #111827; }
+      .small { font-family: Arial, sans-serif; font-size: 13px; fill: #374151; }
+      .tiny { font-family: Arial, sans-serif; font-size: 12px; fill: #4b5563; }
+      .math { font-family: "Times New Roman", serif; font-size: 18px; fill: #111827; font-style: italic; }
+      .domain { fill: #f8fafc; stroke: #111827; stroke-width: 2; }
+      .grid { stroke: #cbd5e1; stroke-width: 1; }
+      .omega { fill: #dbeafe; fill-opacity: 0.55; stroke: #2563eb; stroke-width: 4; }
+      .tilde { fill: url(#tildeHatch); stroke: #d97706; stroke-width: 4; stroke-dasharray: 12 7; }
+      .plateau { fill: #dcfce7; fill-opacity: 0.85; stroke: #16a34a; stroke-width: 3; }
+      .support { fill: #bbf7d0; fill-opacity: 1; stroke: #15803d; stroke-width: 4; }
+      .safe { fill: none; stroke: #7c3aed; stroke-width: 3; stroke-dasharray: 7 6; }
+      .dash { stroke: #64748b; stroke-width: 1.5; stroke-dasharray: 5 5; }
+      .axis { stroke: #111827; stroke-width: 2; }
+      .cutline { stroke: #15803d; stroke-width: 4; fill: none; }
+      .dim { stroke: #374151; stroke-width: 1.6; marker-start: url(#arrow); marker-end: url(#arrow); }
+      .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="760" fill="#ffffff"/>
+  <text x="48" y="48" class="title">Source-Mode Cutoff Geometry for One Coarse-DDM Subdomain</text>
+  <text x="48" y="78" class="subtitle">The local solve is performed on tildeOmega_0,l and then cut off by chi_0,l.</text>
+
+  <text x="70" y="124" class="label">Coarse mesh top view</text>
+  <rect x="70" y="145" width="560" height="420" class="domain"/>
+
+  <g>
+    <line x1="140" y1="145" x2="140" y2="565" class="grid"/>
+    <line x1="210" y1="145" x2="210" y2="565" class="grid"/>
+    <line x1="280" y1="145" x2="280" y2="565" class="grid"/>
+    <line x1="350" y1="145" x2="350" y2="565" class="grid"/>
+    <line x1="420" y1="145" x2="420" y2="565" class="grid"/>
+    <line x1="490" y1="145" x2="490" y2="565" class="grid"/>
+    <line x1="560" y1="145" x2="560" y2="565" class="grid"/>
+    <line x1="70" y1="197.5" x2="630" y2="197.5" class="grid"/>
+    <line x1="70" y1="250" x2="630" y2="250" class="grid"/>
+    <line x1="70" y1="302.5" x2="630" y2="302.5" class="grid"/>
+    <line x1="70" y1="355" x2="630" y2="355" class="grid"/>
+    <line x1="70" y1="407.5" x2="630" y2="407.5" class="grid"/>
+    <line x1="70" y1="460" x2="630" y2="460" class="grid"/>
+    <line x1="70" y1="512.5" x2="630" y2="512.5" class="grid"/>
+  </g>
+
+  <rect x="115" y="185" width="470" height="340" class="tilde"/>
+  <rect x="185" y="237.5" width="330" height="235" class="omega"/>
+  <rect x="235" y="280" width="230" height="150" class="safe"/>
+  <rect x="260" y="302" width="180" height="105" class="plateau"/>
+  <rect x="292" y="326" width="116" height="57" class="support"/>
+
+  <text x="124" y="176" class="math">tildeOmega_0,l = omega_0^{m+C}(Omega_0,l)</text>
+  <text x="194" y="230" class="math">Omega_0,l</text>
+  <text x="242" y="272" class="math">S_0,l^eq</text>
+  <text x="270" y="295" class="math">{ chi_0,l^&gt; = 1 }</text>
+  <text x="300" y="320" class="math">supp chi_0,l</text>
+
+  <line x1="515" y1="472.5" x2="585" y2="525" class="dim"/>
+  <text x="532" y="514" class="small">m + C coarse layers</text>
+  <line x1="515" y1="237.5" x2="585" y2="185" class="dim"/>
+
+  <text x="685" y="145" class="label">Required set relation</text>
+  <rect x="685" y="170" width="520" height="130" class="box"/>
+  <text x="710" y="205" class="math">supp chi_0,l subset {chi_0,l^&gt; = 1}</text>
+  <text x="710" y="235" class="math">subset supp chi_0,l^&gt; subset Omega_0,l</text>
+  <text x="710" y="265" class="math">tildeOmega_0,l = omega_0^{m+C}(Omega_0,l)</text>
+
+  <text x="685" y="338" class="label">Local correction workflow</text>
+  <rect x="685" y="362" width="220" height="92" rx="6" class="box"/>
+  <text x="710" y="397" class="label">1. Recompute basis</text>
+  <text x="710" y="423" class="small">local LOD on tildeOmega_0,l</text>
+  <text x="710" y="442" class="tiny">artificial impedance boundary</text>
+  <line x1="908" y1="408" x2="984" y2="408" stroke="#374151" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="985" y="362" width="220" height="92" rx="6" class="box"/>
+  <text x="1010" y="397" class="label">2. Apply local solve</text>
+  <text x="1010" y="423" class="small">test side uses chi_0,l^&gt;</text>
+  <text x="1010" y="442" class="tiny">with E_l I_H,l injection</text>
+  <line x1="795" y1="455" x2="795" y2="514" stroke="#374151" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="685" y="515" width="520" height="92" rx="6" class="box"/>
+  <text x="710" y="550" class="label">3. Additive output assembly</text>
+  <text x="710" y="576" class="small">sum_l Pi_h( chi_0,l E_l I_H,l Q_0,m,l v_h )</text>
+  <text x="710" y="595" class="tiny">sum_l Pi_H(chi_0,l .) = I exactly on coarse coefficients</text>
+
+  <text x="70" y="642" class="label">1D cross-section</text>
+  <line x1="70" y1="705" x2="630" y2="705" class="axis"/>
+  <line x1="110" y1="705" x2="110" y2="642" class="axis"/>
+  <text x="92" y="646" class="small">1</text>
+  <text x="92" y="724" class="small">0</text>
+  <line x1="150" y1="705" x2="150" y2="655" class="dash"/>
+  <line x1="215" y1="705" x2="215" y2="655" class="dash"/>
+  <line x1="265" y1="705" x2="265" y2="655" class="dash"/>
+  <line x1="405" y1="705" x2="405" y2="655" class="dash"/>
+  <line x1="455" y1="705" x2="455" y2="655" class="dash"/>
+  <line x1="520" y1="705" x2="520" y2="655" class="dash"/>
+  <polyline points="110,705 265,705 265,660 405,660 405,705 600,705" class="cutline"/>
+  <polyline points="110,697 215,697 215,674 455,674 455,697 600,697" stroke="#16a34a" stroke-width="3" fill="none" stroke-dasharray="8 6"/>
+  <polyline points="110,690 150,690 150,648 520,648 520,690 600,690" stroke="#d97706" stroke-width="3" fill="none" stroke-dasharray="12 7"/>
+  <text x="270" y="653" class="small">supp chi_0,l</text>
+  <text x="222" y="668" class="small">chi_0,l^&gt; plateau / safe region</text>
+  <text x="162" y="640" class="small">tildeOmega_0,l</text>
+  <line x1="455" y1="626" x2="520" y2="626" class="dim"/>
+  <text x="470" y="617" class="tiny">m+C</text>
+
+  <rect x="685" y="640" width="24" height="16" class="support"/>
+  <text x="720" y="653" class="small">support of chi_0,l</text>
+  <rect x="685" y="668" width="24" height="16" class="plateau"/>
+  <text x="720" y="681" class="small">plateau where chi_0,l^&gt; = 1</text>
+  <rect x="685" y="696" width="24" height="16" class="omega"/>
+  <text x="720" y="709" class="small">overlapping coarse subdomain Omega_0,l</text>
+  <rect x="685" y="724" width="24" height="16" class="tilde"/>
+  <text x="720" y="737" class="small">local LOD solve domain tildeOmega_0,l</text>
+</svg>
